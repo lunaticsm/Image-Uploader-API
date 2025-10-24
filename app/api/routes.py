@@ -36,6 +36,19 @@ UPLOAD_ROOT = Path(UPLOAD_DIR).resolve()
 _admin_attempts: dict[str, dict] = {}
 
 
+def _flash_html(message: str | None, level: str = "info", reason: str | None = None) -> str:
+    if not message:
+        return ""
+    safe_level = level if level in {"success", "error", "warning", "info"} else "info"
+    allowed_reasons = {"auth", "general", "success"}
+    reason_attr = f" data-flash-reason='{reason}'" if reason in allowed_reasons else ""
+    return (
+        f"<div class='flash flash--{safe_level}' data-flash-level='{safe_level}'{reason_attr} role='alert'>"
+        f"{html.escape(message)}"
+        "</div>"
+    )
+
+
 async def enforce_rate_limit(request: Request):
     client = request.client.host if request.client else "unknown"
     allowed, retry_after = rate_limiter.hit(client)
@@ -113,17 +126,19 @@ def _human_bytes(value: int) -> str:
     return "0 B"
 
 
-def _render_admin_login(message: str | None = None) -> str:
-    flash_html = f"<div class='flash'>{html.escape(message)}</div>" if message else ""
+def _render_admin_login(message: str | None = None, level: str = "info", reason: str | None = None) -> str:
+    flash_html = _flash_html(message, level, reason)
     return render_template("pages/admin_login.html", {"flash_message": flash_html})
 
 
-def _render_admin_page(session: Session, message: str | None = None) -> str:
+def _render_admin_page(
+    session: Session, message: str | None = None, level: str = "info", reason: str | None = None
+) -> str:
     totals = fetch_storage_totals(session)
     snapshot = metrics.snapshot()
     stmt = select(FileModel).order_by(FileModel.created_at.desc()).limit(50)
     files = session.exec(stmt).all()
-    flash_html = f"<div class='flash'>{html.escape(message)}</div>" if message else ""
+    flash_html = _flash_html(message, level, reason)
     return render_template(
         "pages/admin.html",
         {
@@ -197,13 +212,6 @@ async def _auth_admin(request: Request, allow_blank: bool):
     raise HTTPException(status_code=401, detail=msg)
 
 
-async def require_admin(request: Request) -> str:
-    success, _, _ = await _auth_admin(request, allow_blank=False)
-    if success:
-        return ADMIN_PASSWORD
-    raise HTTPException(status_code=500, detail="Admin authentication failed")
-
-
 def _remove_file_from_disk(stored_name: str) -> None:
     try:
         path = (UPLOAD_ROOT / stored_name).resolve()
@@ -219,7 +227,7 @@ async def admin_dashboard(request: Request, session: Session = Depends(get_sessi
     if success:
         html = _render_admin_page(session, message)
         return HTMLResponse(content=html)
-    html = _render_admin_login(message)
+    html = _render_admin_login(message, "error" if message else "info", "auth" if message else None)
     status = 429 if locked and message else 200
     return HTMLResponse(content=html, status_code=status)
 
@@ -228,21 +236,31 @@ async def admin_dashboard(request: Request, session: Session = Depends(get_sessi
 async def admin_delete_file(
     request: Request,
     session: Session = Depends(get_session),
-    _: str = Depends(require_admin),
 ):
-    form = getattr(request.state, "admin_form", None) or await request.form()
+    form = getattr(request.state, "admin_form", None)
+    if form is None:
+        form = await request.form()
+        request.state.admin_form = form
+
+    success, message, locked = await _auth_admin(request, allow_blank=True)
+    if not success:
+        status = 429 if locked else 401
+        failure_message = message or "Admin password required."
+        html = _render_admin_page(session, failure_message, "error", "auth")
+        return HTMLResponse(content=html, status_code=status)
+
     file_id = form.get("file_id")
     if not file_id:
         raise HTTPException(status_code=400, detail="Missing file_id")
     file = session.get(FileModel, file_id)
     if not file:
-        html = _render_admin_page(session, "File not found.")
+        html = _render_admin_page(session, "File not found.", "error", "general")
         return HTMLResponse(content=html, status_code=404)
 
     _remove_file_from_disk(file.stored_name)
     session.delete(file)
     session.commit()
-    html = _render_admin_page(session, "File deleted.")
+    html = _render_admin_page(session, "File deleted.", "success", "success")
     return HTMLResponse(content=html)
 
 
@@ -250,8 +268,19 @@ async def admin_delete_file(
 async def admin_delete_all(
     request: Request,
     session: Session = Depends(get_session),
-    _: str = Depends(require_admin),
 ):
+    form = getattr(request.state, "admin_form", None)
+    if form is None:
+        form = await request.form()
+        request.state.admin_form = form
+
+    success, message, locked = await _auth_admin(request, allow_blank=True)
+    if not success:
+        status = 429 if locked else 401
+        failure_message = message or "Admin password required."
+        html = _render_admin_page(session, failure_message, "error", "auth")
+        return HTMLResponse(content=html, status_code=status)
+
     files = session.exec(select(FileModel)).all()
     deleted = 0
     for file in files:
@@ -259,7 +288,7 @@ async def admin_delete_all(
         session.delete(file)
         deleted += 1
     session.commit()
-    html = _render_admin_page(session, f"Deleted {deleted} files.")
+    html = _render_admin_page(session, f"Deleted {deleted} files.", "success", "success")
     return HTMLResponse(content=html)
 
 
