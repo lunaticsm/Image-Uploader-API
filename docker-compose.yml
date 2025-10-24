@@ -1,0 +1,34 @@
+version: "3.9"
+
+services:
+  app:
+    build: .
+    image: image-uploader-app
+    container_name: image-uploader-app
+    env_file: .env
+    environment:
+      UPLOAD_DIR: /data/uploads
+      DB_URL: postgresql+psycopg2://cdn:cdn@db:5432/cdn
+    depends_on:
+      db:
+        condition: service_healthy
+    volumes:
+      - uploads-data:/data/uploads
+    ports:
+      - "8000:8000"
+
+  db:
+    image: postgres:16
+    restart: always
+    environment:
+      POSTGRES_DB: cdn
+      POSTGRES_USER: cdn
+      POSTGRES_PASSWORD: cdn
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U cdn -d cdn"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  uploads-data:

@@ -56,6 +56,26 @@ docker run --rm -p 8000:8000 --env-file .env -v $(pwd)/uploads:/app/uploads imag
 
 Customize `DB_URL`, `UPLOAD_DIR`, etc. via the `--env-file` or individual `-e` flags.
 
+### Docker Compose & Postgres
+
+For a Postgres-backed setup (with uploads persisted to a Docker volume), use the provided composition:
+
+```bash
+docker compose up --build
+```
+
+Key environment variables for production deployments:
+
+| Variable | Description |
+|----------|-------------|
+| `DB_URL` | Should point to your managed database, e.g. `postgresql+psycopg2://user:pass@host:5432/dbname`. |
+| `UPLOAD_DIR` | Mounted path where files are stored (use a persistent volume or S3-compatible backend). |
+| `RATE_LIMIT_PER_MINUTE` | Adjust per-client quotas according to expected traffic. |
+| `MAX_FILE_SIZE_BYTES` | Enforce a tighter upload cap if needed. |
+| `CACHE_MAX_AGE_SECONDS` | Tune cache headers for served files. |
+| `CORS_ORIGINS` | Lock down origins for production frontends. |
+| `ENABLE_CLEANER` | Keep true to remove stale files automatically. |
+
 ## API Overview
 
 | Method | Path | Description |
