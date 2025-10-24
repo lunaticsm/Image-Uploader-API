@@ -45,6 +45,17 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 --proxy-headers
 
 Visit `/` for a minimalist landing page with real-time usage metrics, and `/api-info` for a human-friendly API guide.
 
+### Docker
+
+Build and run with Docker:
+
+```bash
+docker build -t image-uploader .
+docker run --rm -p 8000:8000 --env-file .env -v $(pwd)/uploads:/app/uploads image-uploader
+```
+
+Customize `DB_URL`, `UPLOAD_DIR`, etc. via the `--env-file` or individual `-e` flags.
+
 ## API Overview
 
 | Method | Path | Description |
@@ -78,3 +89,7 @@ The suite bootstraps the FastAPI app against a temporary SQLite database to cove
 - For higher concurrency, point `DB_URL` at a server database and keep the provided SQLite connection args if you stay on SQLite.
 - Mount or back up `UPLOAD_DIR` storage if files need to persist beyond the cleaner retention window.
 - Tune `RATE_LIMIT_PER_MINUTE`, `MAX_FILE_SIZE_BYTES`, and `CACHE_MAX_AGE_SECONDS` to match your traffic patterns.
+
+## License
+
+Released under the [MIT License](LICENSE).
