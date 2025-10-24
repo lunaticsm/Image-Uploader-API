@@ -9,6 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from sqlmodel import SQLModel, Session, create_engine, select
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from sqlalchemy import func
 
 from app.cleaner import start_cleaner
 from app.config import (
@@ -59,6 +60,24 @@ if ENABLE_CLEANER:
     start_cleaner(engine, metrics, logger)  # background scheduler
 
 
+def get_persistent_stats() -> dict[str, int]:
+    def _scalar(value):
+        if isinstance(value, tuple):
+            return value[0] if value else 0
+        try:
+            return value[0]  # type: ignore[index]
+        except Exception:
+            return value
+
+    with Session(engine) as session:
+        total_files_row = session.exec(select(func.count()).select_from(FileModel)).one()
+        total_bytes_row = session.exec(select(func.sum(FileModel.size_bytes))).one()
+    total_files = int(_scalar(total_files_row) or 0)
+    raw_total_bytes = _scalar(total_bytes_row)
+    total_bytes = int(raw_total_bytes or 0)
+    return {"total_files": total_files, "total_bytes": total_bytes}
+
+
 async def enforce_rate_limit(request: Request):
     client = request.client.host if request.client else "unknown"
     allowed, retry_after = rate_limiter.hit(client)
@@ -90,13 +109,16 @@ async def not_found_handler(request: Request, exc: StarletteHTTPException):
 @app.get("/", response_class=HTMLResponse)
 async def home():
     stats = metrics.snapshot()
+    persistent = get_persistent_stats()
+    uploads_count = max(int(stats.get("uploads", 0)), persistent["total_files"])
     html = render_template(
         "index.html",
         {
             "max_file_mb": f"{MAX_FILE_SIZE_MB:.1f}",
-            "uploads": str(stats.get("uploads", 0)),
+            "uploads": str(uploads_count),
             "downloads": str(stats.get("downloads", 0)),
             "deleted": str(stats.get("deleted", 0)),
+            "storage_bytes": str(persistent["total_bytes"]),
             "year": str(datetime.utcnow().year),
         },
     )
@@ -115,7 +137,14 @@ async def api_info():
 @app.get("/metrics", dependencies=[Depends(enforce_rate_limit)])
 def metrics_snapshot():
     data = metrics.snapshot()
-    response = JSONResponse(data)
+    persistent = get_persistent_stats()
+    payload = {
+        "uploads": max(int(data.get("uploads", 0)), persistent["total_files"]),
+        "downloads": int(data.get("downloads", 0)),
+        "deleted": int(data.get("deleted", 0)),
+        "storage_bytes": persistent["total_bytes"],
+    }
+    response = JSONResponse(payload)
     response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
     return response
 
