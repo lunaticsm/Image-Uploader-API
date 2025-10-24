@@ -1,0 +1,24 @@
+# Bytecode / cache
+__pycache__/
+*.py[cod]
+.Python
+
+# Environments
+env/
+venv/
+.venv/
+
+# Testing
+.pytest_cache/
+.coverage
+coverage.xml
+
+# Editors
+.vscode/
+.idea/
+*.swp
+
+# Local data
+uploads/
+*.db
+.env
