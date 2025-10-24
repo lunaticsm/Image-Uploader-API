@@ -29,10 +29,6 @@
             <code>id</code>, <code>url</code>, <code>size</code>, <code>type</code>.
           </li>
           <li>
-            <strong>GET /list</strong><br />
-            Lists stored files ordered by newest first, including original names and timestamps.
-          </li>
-          <li>
             <strong>GET /{filename}</strong><br />
             Serves the stored file given the UUID filename returned from <code>/upload</code>. Responses include
             cache headers (<code>Cache-Control: public, max-age</code>) for CDN friendliness.
