@@ -21,7 +21,21 @@ def _prepare_client(tmp_path, monkeypatch, *, rate_limit="5", max_size="1024", c
     monkeypatch.setenv("CACHE_MAX_AGE_SECONDS", cache_age)
 
     # Reload modules so configuration changes take effect cleanly.
-    for module_name in ("app.config", "app.metrics", "app.rate_limit", "app.storage", "app.cleaner", "app.main"):
+    module_order = [
+        "app.config",
+        "app.core.metrics",
+        "app.core.rate_limit",
+        "app.db",
+        "app.storage",
+        "app.cleaner",
+        "app.services.stats",
+        "app.core.templates",
+        "app.core.exceptions",
+        "app.api.routes",
+        "app.main",
+    ]
+
+    for module_name in module_order:
         module = importlib.import_module(module_name)
         importlib.reload(module)
 

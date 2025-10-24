@@ -1,0 +1,42 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>AlterBase CDN</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="/static/css/home.css" />
+  </head>
+  <body>
+    <main>
+      <h1>AlterBase CDN</h1>
+      <p>
+        Fast minimal API for hosting images and assets. Upload files (up to ${max_file_mb} MB), retrieve shareable
+        URLs, and keep storage tidy with automatic cleanup.
+      </p>
+      <div class="metrics-grid">
+        <div class="metric" data-key="uploads" data-value="${uploads}">
+          <span class="label">Uploads</span>
+          <span class="value">0</span>
+        </div>
+        <div class="metric" data-key="downloads" data-value="${downloads}">
+          <span class="label">Downloads</span>
+          <span class="value">0</span>
+        </div>
+        <div class="metric" data-key="deleted" data-value="${deleted}">
+          <span class="label">Cleanups</span>
+          <span class="value">0</span>
+        </div>
+        <div class="metric" data-key="storage_bytes" data-value="${storage_bytes}" data-format="bytes">
+          <span class="label">Storage</span>
+          <span class="value">0</span>
+        </div>
+      </div>
+      <a href="/api-info" class="cta">View API Guide</a>
+    </main>
+    <footer>
+      <span>Made by<span class="heart">❤️</span>lunaticsm</span>
+      <span>© ${year} AlterBase CDN</span>
+    </footer>
+    <script src="/static/js/home.js" defer></script>
+  </body>
+</html>
