@@ -1,81 +1,48 @@
 name: 🚀 GitHub to Telegram Notification
-
-on:
-  push:
-    branches-ignore:
-      - 'dependabot/**'  # Optional: skip bot commits
+on: [push]
 
 jobs:
   notify:
     runs-on: ubuntu-latest
     steps:
-      - name: 📩 Send Telegram Notification
+      - name: 📩 Telegram Notification
         env:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_TO }}
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}
+          COMMIT_MSG: ${{ github.event.commits[0].message }}
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref }}
+          COMMIT_URL: https://github.com/${{ github.repository }}/commit/${{ github.sha }}
+          PROFILE_URL: https://github.com/${{ github.actor }}
+          USER: ${{ github.actor }}
         run: |
-          # Validate required secrets
-          if [ -z "$TELEGRAM_CHAT_ID" ] || [ -z "$TELEGRAM_BOT_TOKEN" ]; then
-            echo "⚠️ Missing TELEGRAM_TO or TELEGRAM_TOKEN secret. Skipping notification."
-            exit 0
-          fi
+          # Konversi waktu ke Tokyo Time (JST, UTC+9)
+          JST_TIMESTAMP=$(TZ="Asia/Tokyo" date -d "${{ github.event.head_commit.timestamp }}" "+%Y-%m-%d %H:%M:%S JST")
 
-          # Extract event data
-          USER="${{ github.actor }}"
-          REPO="${{ github.repository }}"
-          BRANCH="${{ github.ref_name }}"
-          COMMIT_MSG="${{ github.event.head_commit.message }}"
-          COMMIT_SHA="${{ github.sha }}"
-          COMMIT_URL="https://github.com/${REPO}/commit/${COMMIT_SHA}"
-          PROFILE_URL="https://github.com/${USER}"
+          # Ambil total commit count
+          TOTAL_COMMITS=$(curl -s "https://api.github.com/repos/${{ github.repository }}/commits?per_page=1" | jq length)
 
-          # Format timestamp in JST (UTC+9)
-          JST_TIMESTAMP=$(TZ="Asia/Tokyo" date -d "${{ github.event.head_commit.timestamp }}" "+%Y-%m-%d %H:%M:%S JST" 2>/dev/null || echo "Unknown time")
-
-          # Get total commit count (fallback to "N/A" if failed)
-          TOTAL_COMMITS=$(curl -s "https://api.github.com/repos/${REPO}/commits?per_page=1" | jq -r 'length // "N/A"' 2>/dev/null)
-
-          # Escape special Markdown characters in commit message
-          ESCAPED_MSG=$(printf '%s' "$COMMIT_MSG" | sed 's/[_*[\]()~`>#+\-=|{}.!]/\\&/g')
-
-          # Build message
-          MESSAGE="🚀 *New Commit Pushed!*
-
-———————————————
-🏷️ *Commit by:* \`${USER}\`
-📂 *Repository:* \`${REPO}\`
-🌿 *Branch:* \`${BRANCH}\`
-🛠️ *Total Commits:* \`${TOTAL_COMMITS}\`
-⏳ *Pushed at:* \`${JST_TIMESTAMP}\`
-———————————————
-
-📝 *Commit Message:*
-\`\`\`
-${ESCAPED_MSG}
-\`\`\`"
-
-          # Send to Telegram
-          RESPONSE=$(curl -s -o response.json -w "%{http_code}" -X POST \
-            "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -H "Content-Type: application/json" \
-            -d "{
-              \"chat_id\": \"${TELEGRAM_CHAT_ID}\",
-              \"text\": \"${MESSAGE}\",
-              \"parse_mode\": \"MarkdownV2\",
-              \"disable_web_page_preview\": true,
-              \"reply_markup\": {
-                \"inline_keyboard\": [
-                  [{\"text\": \"👤 View Profile\", \"url\": \"${PROFILE_URL}\"}],
-                  [{\"text\": \"🔗 View Commit\", \"url\": \"${COMMIT_URL}\"}]
-                ]
-              }
-            }")
-
-          # Check response
-          if [ "$RESPONSE" -ne 200 ]; then
-            echo "❌ Telegram notification failed (HTTP $RESPONSE). See response.json"
-            cat response.json
-            exit 1
-          else
-            echo "✅ Notification sent successfully!"
-          fi
+          # Kirim notifikasi ke Telegram
+          curl -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+          -H "Content-Type: application/json" \
+          -d '{
+            "chat_id": "'$TELEGRAM_CHAT_ID'",
+            "text": "
+            🚀 *New Commit Pushed!*\n
+            ———————————————\n            
+            🏷️ *Commit by:* `'"$USER"'`\n            
+            📂 *Repository:* `'"$REPO"'`\n
+            🌿 *Branch:* `'"$BRANCH"'`\n
+            🛠️ *Total Commits:* `'"$TOTAL_COMMITS"'`\n
+            ⏳ *Pushed at:* `'"$JST_TIMESTAMP"'`\n
+            ———————————————\n
+            📝 *Commit Message:*\n
+            ```\n'"$COMMIT_MSG"'\n```\n
+            ",
+            "parse_mode": "Markdown",
+            "disable_web_page_preview": true,
+            "reply_markup": "{\"inline_keyboard\": [
+              [{\"text\": \"👤 View Profile\", \"url\": \"'"$PROFILE_URL"'\"}],
+              [{\"text\": \"🔗 View Commit Details\", \"url\": \"'"$COMMIT_URL"'\"}]
+            ]}"
+          }'
