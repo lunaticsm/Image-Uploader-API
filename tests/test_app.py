@@ -1,12 +1,13 @@
 import importlib
 import sys
+from datetime import datetime, timedelta
 from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
 
-def _prepare_client(tmp_path, monkeypatch, *, rate_limit="5", max_size="1024", cache_age="120"):
+def _prepare_client(tmp_path, monkeypatch, *, rate_limit="5", max_size="1024", cache_age="120", lock_step="60"):
     project_root = Path(__file__).resolve().parents[1]
     project_root_str = str(project_root)
     if project_root_str not in sys.path:
@@ -19,6 +20,8 @@ def _prepare_client(tmp_path, monkeypatch, *, rate_limit="5", max_size="1024", c
     monkeypatch.setenv("RATE_LIMIT_PER_MINUTE", rate_limit)
     monkeypatch.setenv("MAX_FILE_SIZE_BYTES", max_size)
     monkeypatch.setenv("CACHE_MAX_AGE_SECONDS", cache_age)
+    monkeypatch.setenv("ADMIN_PASSWORD", "test-admin")
+    monkeypatch.setenv("ADMIN_LOCK_STEP_SECONDS", lock_step)
 
     # Reload modules so configuration changes take effect cleanly.
     module_order = [
@@ -105,3 +108,49 @@ def test_rate_limit_exceeded(tmp_path, monkeypatch):
         limited = c.get("/list")
         assert limited.status_code == 429
         assert "Rate limit exceeded" in limited.json()["detail"]
+
+
+def test_admin_requires_password(client):
+    response = client.get("/admin")
+    assert response.status_code == 200
+    assert "Admin Access" in response.text
+
+
+def test_admin_dashboard_with_password(client):
+    headers = {"x-admin-password": "test-admin"}
+    response = client.get("/admin", headers=headers)
+    assert response.status_code == 200
+    assert "AlterBase Admin" in response.text
+
+
+def test_admin_delete_file(client):
+    upload = client.post("/upload", files={"file": ("hello.txt", b"data", "text/plain")}).json()
+    file_id = upload["id"]
+    resp = client.post("/admin/delete", data={"file_id": file_id, "password": "test-admin"})
+    assert resp.status_code == 200
+    assert client.get(upload["url"]).status_code == 404
+
+
+def test_admin_delete_all(client):
+    client.post("/upload", files={"file": ("a.txt", b"a", "text/plain")})
+    client.post("/upload", files={"file": ("b.txt", b"b", "text/plain")})
+    resp = client.post("/admin/delete-all", data={"password": "test-admin"})
+    assert resp.status_code == 200
+    listing = client.get("/list")
+    assert listing.json() == []
+
+
+def test_admin_lockout_escalation(tmp_path, monkeypatch):
+    with _prepare_client(tmp_path, monkeypatch, lock_step="60") as c:
+        for _ in range(3):
+            resp = c.get("/admin", headers={"x-admin-password": "bad"})
+        assert resp.status_code == 429
+        assert "Too many attempts" in resp.text
+
+        routes = importlib.import_module("app.api.routes")
+        key = next(iter(routes._admin_attempts))
+        routes._admin_attempts[key]["lock_until"] = datetime.utcnow() - timedelta(seconds=1)
+        for _ in range(3):
+            resp = c.get("/admin", headers={"x-admin-password": "bad"})
+        assert resp.status_code == 429
+        assert "Too many failures" in resp.text

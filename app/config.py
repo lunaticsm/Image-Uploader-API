@@ -15,3 +15,5 @@ ENABLE_CLEANER = os.getenv("ENABLE_CLEANER", "true").lower() in {"true", "1", "y
 MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE_BYTES", str(10 * 1024 * 1024)))
 RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
 CACHE_MAX_AGE_SECONDS = int(os.getenv("CACHE_MAX_AGE_SECONDS", "3600"))
+ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin-dev-password")
+ADMIN_LOCK_STEP_SECONDS = int(os.getenv("ADMIN_LOCK_STEP_SECONDS", str(5 * 60)))

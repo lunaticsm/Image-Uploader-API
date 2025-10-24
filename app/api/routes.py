@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+import html
+from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
 
@@ -9,7 +10,14 @@ from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from sqlmodel import Session, select
 
-from app.config import CACHE_MAX_AGE_SECONDS, MAX_FILE_SIZE, RATE_LIMIT_PER_MINUTE, UPLOAD_DIR
+from app.config import (
+    ADMIN_LOCK_STEP_SECONDS,
+    ADMIN_PASSWORD,
+    CACHE_MAX_AGE_SECONDS,
+    MAX_FILE_SIZE,
+    RATE_LIMIT_PER_MINUTE,
+    UPLOAD_DIR,
+)
 from app.core.metrics import metrics
 from app.core.rate_limit import RateLimiter
 from app.core.templates import render_template
@@ -25,6 +33,7 @@ logger = logging.getLogger("image_uploader")
 rate_limiter = RateLimiter(RATE_LIMIT_PER_MINUTE)
 MAX_FILE_SIZE_MB = MAX_FILE_SIZE / (1024 * 1024)
 UPLOAD_ROOT = Path(UPLOAD_DIR).resolve()
+_admin_attempts: dict[str, dict] = {}
 
 
 async def enforce_rate_limit(request: Request):
@@ -65,6 +74,190 @@ async def api_info():
         "pages/api.html",
         {"max_file_mb": f"{MAX_FILE_SIZE_MB:.1f}", "rate_limit": str(RATE_LIMIT_PER_MINUTE)},
     )
+    return HTMLResponse(content=html)
+
+
+def _render_admin_table(files: list[FileModel]) -> str:
+    rows: list[str] = []
+    for file in files:
+        preview = f"<img src='/{quote(file.stored_name)}' alt='preview' loading='lazy' />"
+        rows.append(
+            "<tr>"
+            f"<td>{html.escape(file.id)}</td>"
+            f"<td class='preview-cell'>{preview}</td>"
+            f"<td>{html.escape(file.original_name)}</td>"
+            f"<td>{file.size_bytes} B</td>"
+            f"<td>{file.created_at}</td>"
+            "<td>"
+            "<form method='post' action='/admin/delete' class='inline'>"
+            f"<input type='hidden' name='file_id' value='{html.escape(file.id)}' />"
+            "<input type='password' name='password' placeholder='Admin password' required />"
+            "<button type='submit'>Delete</button>"
+            "</form>"
+            "</td>"
+            "</tr>"
+        )
+    return "".join(rows) or "<tr><td colspan='5'>No files yet</td></tr>"
+
+
+def _human_bytes(value: int) -> str:
+    units = ["B", "KB", "MB", "GB", "TB"]
+    size = float(max(value, 0))
+    for unit in units:
+        if size < 1024 or unit == units[-1]:
+            formatted = f"{size:.1f}".rstrip("0").rstrip(".")
+            return f"{formatted or '0'} {unit}"
+        size /= 1024
+    return "0 B"
+
+
+def _render_admin_login(message: str | None = None) -> str:
+    flash_html = f"<div class='flash'>{html.escape(message)}</div>" if message else ""
+    return render_template("pages/admin_login.html", {"flash_message": flash_html})
+
+
+def _render_admin_page(session: Session, message: str | None = None) -> str:
+    totals = fetch_storage_totals(session)
+    snapshot = metrics.snapshot()
+    stmt = select(FileModel).order_by(FileModel.created_at.desc()).limit(50)
+    files = session.exec(stmt).all()
+    flash_html = f"<div class='flash'>{html.escape(message)}</div>" if message else ""
+    return render_template(
+        "pages/admin.html",
+        {
+            "uploads": totals["total_files"],
+            "downloads": snapshot.get("downloads", 0),
+            "deleted": snapshot.get("deleted", 0),
+            "storage_human": _human_bytes(totals["total_bytes"]),
+            "table_rows": _render_admin_table(files),
+            "flash_message": flash_html,
+        },
+    )
+
+
+async def _get_admin_password(request: Request) -> str | None:
+    password = request.headers.get("x-admin-password") or request.query_params.get("password")
+    if password:
+        return password
+    if request.method in {"POST", "PUT", "DELETE"}:
+        form_data = getattr(request.state, "admin_form", None)
+        if form_data is None:
+            try:
+                form_data = await request.form()
+            except Exception:
+                form_data = None
+            else:
+                request.state.admin_form = form_data
+        if form_data:
+            return form_data.get("password")
+    return None
+
+
+async def _auth_admin(request: Request, allow_blank: bool):
+    client = request.client.host if request.client else "unknown"
+    state = _admin_attempts.setdefault(client, {"failures": 0, "penalty": 0, "lock_until": None})
+    now = datetime.utcnow()
+    lock_until = state.get("lock_until")
+    if lock_until and now < lock_until:
+        remaining = lock_until - now
+        minutes = max(1, int(remaining.total_seconds() // 60) + 1)
+        msg = f"Too many attempts. Try again in {minutes} minutes."
+        if allow_blank:
+            return False, msg, True
+        raise HTTPException(status_code=429, detail=msg)
+    if lock_until and now >= lock_until:
+        state["lock_until"] = None
+
+    password = await _get_admin_password(request)
+    if not password:
+        if allow_blank:
+            return False, None, False
+        raise HTTPException(status_code=401, detail="Admin password required")
+
+    if ADMIN_PASSWORD and password == ADMIN_PASSWORD:
+        state["failures"] = 0
+        return True, None, False
+
+    state["failures"] = state.get("failures", 0) + 1
+    if state["failures"] >= 3:
+        state["failures"] = 0
+        state["penalty"] = state.get("penalty", 0) + 1
+        duration = state["penalty"] * ADMIN_LOCK_STEP_SECONDS
+        state["lock_until"] = now + timedelta(seconds=duration)
+        minutes = max(1, duration // 60)
+        msg = f"Too many failures. Locked for {minutes} minutes."
+        if allow_blank:
+            return False, msg, True
+        raise HTTPException(status_code=429, detail=msg)
+    msg = "Invalid password"
+    if allow_blank:
+        return False, msg, False
+    raise HTTPException(status_code=401, detail=msg)
+
+
+async def require_admin(request: Request) -> str:
+    success, _, _ = await _auth_admin(request, allow_blank=False)
+    if success:
+        return ADMIN_PASSWORD
+    raise HTTPException(status_code=500, detail="Admin authentication failed")
+
+
+def _remove_file_from_disk(stored_name: str) -> None:
+    try:
+        path = (UPLOAD_ROOT / stored_name).resolve()
+        path.relative_to(UPLOAD_ROOT)
+    except (ValueError, RuntimeError):
+        return
+    path.unlink(missing_ok=True)
+
+
+@router.api_route("/admin", methods=["GET", "POST"], response_class=HTMLResponse)
+async def admin_dashboard(request: Request, session: Session = Depends(get_session)):
+    success, message, locked = await _auth_admin(request, allow_blank=True)
+    if success:
+        html = _render_admin_page(session, message)
+        return HTMLResponse(content=html)
+    html = _render_admin_login(message)
+    status = 429 if locked and message else 200
+    return HTMLResponse(content=html, status_code=status)
+
+
+@router.post("/admin/delete", response_class=HTMLResponse)
+async def admin_delete_file(
+    request: Request,
+    session: Session = Depends(get_session),
+    _: str = Depends(require_admin),
+):
+    form = getattr(request.state, "admin_form", None) or await request.form()
+    file_id = form.get("file_id")
+    if not file_id:
+        raise HTTPException(status_code=400, detail="Missing file_id")
+    file = session.get(FileModel, file_id)
+    if not file:
+        html = _render_admin_page(session, "File not found.")
+        return HTMLResponse(content=html, status_code=404)
+
+    _remove_file_from_disk(file.stored_name)
+    session.delete(file)
+    session.commit()
+    html = _render_admin_page(session, "File deleted.")
+    return HTMLResponse(content=html)
+
+
+@router.post("/admin/delete-all", response_class=HTMLResponse)
+async def admin_delete_all(
+    request: Request,
+    session: Session = Depends(get_session),
+    _: str = Depends(require_admin),
+):
+    files = session.exec(select(FileModel)).all()
+    deleted = 0
+    for file in files:
+        _remove_file_from_disk(file.stored_name)
+        session.delete(file)
+        deleted += 1
+    session.commit()
+    html = _render_admin_page(session, f"Deleted {deleted} files.")
     return HTMLResponse(content=html)
 
 

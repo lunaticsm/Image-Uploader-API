@@ -9,6 +9,8 @@ services:
     environment:
       UPLOAD_DIR: /data/uploads
       DB_URL: postgresql+psycopg2://cdn:cdn@db:5432/cdn
+      ENABLE_CLEANER: "true"
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me}
     depends_on:
       db:
         condition: service_healthy

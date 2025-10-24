@@ -8,6 +8,7 @@ FastAPI-powered micro CDN for storing and serving uploaded assets. Files are wri
 - In-memory rate limiting (per-client/minute) to prevent abuse.
 - Automatic cleanup job that prunes files after the configured retention window.
 - Live metrics (uploads, downloads, cleanups) exposed on the home page.
+- Password-protected admin dashboard to inspect uploads, storage usage, and prune files with lockout protection.
 - SQLite by default, with environment overrides for production databases.
 
 ## Live Demo
@@ -27,13 +28,15 @@ Optional environment variables:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `UPLOAD_DIR` | `./uploads` | Directory for stored files. Created automatically. |
-| `DB_URL` | `sqlite:///./cdn.db` | SQLModel database URL. Use PostgreSQL/MySQL for multi-worker deployments. |
+| `DB_URL` | `sqlite:///./cdn.db` | SQLModel database URL. Use PostgreSQL/MySQL for multi-worker deployments. Use `postgresql+psycopg2://user:pass@host:5432/db` inside Docker. |
 | `DELETE_AFTER_HOURS` | `72` | Retention window for the cleaner job. |
 | `CORS_ORIGINS` | `*` | Comma-separated list of allowed origins. |
 | `ENABLE_CLEANER` | `true` | Disable (`false`) to skip scheduling the cleanup job. |
 | `MAX_FILE_SIZE_BYTES` | `10485760` | Max upload size in bytes (default 10 MB). |
 | `RATE_LIMIT_PER_MINUTE` | `60` | Allowed requests per client per minute. |
 | `CACHE_MAX_AGE_SECONDS` | `3600` | Cache lifetime used for served files. |
+| `ADMIN_PASSWORD` | `admin-dev-password` | Password required to access the `/admin` dashboard. |
+| `ADMIN_LOCK_STEP_SECONDS` | `300` | Lock duration increment (in seconds) after repeated failed admin logins. |
 
 Run the API:
 
@@ -64,6 +67,8 @@ For a Postgres-backed setup (with uploads persisted to a Docker volume), use the
 docker compose up --build
 ```
 
+The compose file maps uploads into a named volume at `/data/uploads`, points the API at the bundled Postgres (`postgresql+psycopg2://cdn:cdn@db:5432/cdn`), and loads overrides from `.env`.
+
 Key environment variables for production deployments:
 
 | Variable | Description |
@@ -75,16 +80,21 @@ Key environment variables for production deployments:
 | `CACHE_MAX_AGE_SECONDS` | Tune cache headers for served files. |
 | `CORS_ORIGINS` | Lock down origins for production frontends. |
 | `ENABLE_CLEANER` | Keep true to remove stale files automatically. |
+| `ADMIN_PASSWORD` | Password provided via header/form/query for `/admin`. |
+| `ADMIN_LOCK_STEP_SECONDS` | Lock duration increment (seconds) after failed admin logins. |
 
 ## API Overview
 
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/upload` | Accepts multipart file upload (respecting the configured size limit) and returns metadata (`id`, `url`, `size`, `type`). |
-| `GET` | `/list` | Returns a JSON array of stored files ordered by newest first. |
 | `GET` | `/{filename}` | Serves a stored file by UUID filename and includes `Cache-Control` headers. |
 
 Returned `url` values are relative (e.g. `/3d4d...jpg`), suitable for prefixing with your CDN/API host.
+
+### Admin Dashboard
+- Visit `/admin` with the header `X-Admin-Password: <ADMIN_PASSWORD>` (or include `password` in the query/form) to view uploads, downloads, cleanup counts, recent files, and trigger per-file or bulk deletions.
+- After three failed attempts the admin login is locked; each lock adds `ADMIN_LOCK_STEP_SECONDS` (default 5 minutes) to the wait time.
 
 ## Cleaning Expired Files
 
