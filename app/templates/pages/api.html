@@ -11,8 +11,9 @@
       <h1>AlterBase CDN API</h1>
       <p class="lead">
         Upload files and retrieve shareable URLs with a minimal HTTP API. Each client is limited to
-        ${rate_limit} requests per minute and individual uploads are capped at ${max_file_mb} MB.
+        ${rate_limit} requests per minute and individual uploads are capped at ${max_file_text}.
       </p>
+      <p class="meta">Maximum upload size per file: <strong>${max_file_text}</strong></p>
 
       <section>
         <h2>Base URL</h2>
@@ -24,7 +25,7 @@
         <ul>
           <li>
             <strong>POST /upload</strong><br />
-            Multipart form request with <code>file</code> field (max ${max_file_mb} MB). Returns JSON metadata with
+            Multipart form request with <code>file</code> field (max ${max_file_text}). Returns JSON metadata with
             <code>id</code>, <code>url</code>, <code>size</code>, <code>type</code>.
           </li>
           <li>

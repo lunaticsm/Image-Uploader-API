@@ -53,11 +53,12 @@ async def home(session: Session = Depends(get_session)):
     stats = metrics.snapshot()
     totals = fetch_storage_totals(session)
     uploads_count = max(int(stats.get("uploads", 0)), totals["total_files"])
+    max_file_text = f"{MAX_FILE_SIZE_MB:.1f} MB"
 
     html = render_template(
         "pages/home.html",
         {
-            "max_file_mb": f"{MAX_FILE_SIZE_MB:.1f}",
+            "max_file_text": max_file_text,
             "uploads": str(uploads_count),
             "downloads": str(stats.get("downloads", 0)),
             "deleted": str(stats.get("deleted", 0)),
@@ -70,9 +71,10 @@ async def home(session: Session = Depends(get_session)):
 
 @router.get("/api-info", response_class=HTMLResponse)
 async def api_info():
+    max_file_text = f"{MAX_FILE_SIZE_MB:.1f} MB"
     html = render_template(
         "pages/api.html",
-        {"max_file_mb": f"{MAX_FILE_SIZE_MB:.1f}", "rate_limit": str(RATE_LIMIT_PER_MINUTE)},
+        {"max_file_text": max_file_text, "rate_limit": str(RATE_LIMIT_PER_MINUTE)},
     )
     return HTMLResponse(content=html)
 
@@ -185,7 +187,7 @@ async def _auth_admin(request: Request, allow_blank: bool):
         duration = state["penalty"] * ADMIN_LOCK_STEP_SECONDS
         state["lock_until"] = now + timedelta(seconds=duration)
         minutes = max(1, duration // 60)
-        msg = f"Too many failures. Locked for {minutes} minutes."
+        msg = f"Too many attempts. Too many failures. Locked for {minutes} minutes."
         if allow_blank:
             return False, msg, True
         raise HTTPException(status_code=429, detail=msg)

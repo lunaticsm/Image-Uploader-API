@@ -7,7 +7,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 
-def _prepare_client(tmp_path, monkeypatch, *, rate_limit="5", max_size="1024", cache_age="120", lock_step="60"):
+def _prepare_client(tmp_path, monkeypatch, *, rate_limit="5", max_size=str(10 * 1024 * 1024), cache_age="120", lock_step="60"):
     project_root = Path(__file__).resolve().parents[1]
     project_root_str = str(project_root)
     if project_root_str not in sys.path:
