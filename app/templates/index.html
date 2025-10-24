@@ -43,6 +43,29 @@
         opacity: 0.85;
         margin-bottom: 2rem;
       }
+      .metrics {
+        display: grid;
+        gap: 1rem;
+        margin-bottom: 2rem;
+        text-align: left;
+        background: rgba(15, 23, 42, 0.6);
+        border-radius: 14px;
+        padding: 1.5rem;
+        border: 1px solid rgba(148, 163, 184, 0.2);
+      }
+      .metrics .label {
+        display: block;
+        font-size: 0.85rem;
+        text-transform: uppercase;
+        letter-spacing: 0.14em;
+        opacity: 0.65;
+        margin-bottom: 0.3rem;
+      }
+      .metrics .value {
+        font-size: 1.6rem;
+        font-weight: 600;
+        color: #f8fafc;
+      }
       a {
         display: inline-block;
         text-decoration: none;
@@ -64,9 +87,23 @@
     <main>
       <h1>AlterBase CDN</h1>
       <p>
-        Fast minimal API for hosting images and assets. Upload files, retrieve shareable URLs, and keep storage tidy
-        with automatic cleanup.
+        Fast minimal API for hosting images and assets. Upload files (up to $max_file_mb MB), retrieve shareable
+        URLs, and keep storage tidy with automatic cleanup.
       </p>
+      <div class="metrics">
+        <div>
+          <span class="label">Uploads</span>
+          <span class="value">$uploads</span>
+        </div>
+        <div>
+          <span class="label">Downloads</span>
+          <span class="value">$downloads</span>
+        </div>
+        <div>
+          <span class="label">Cleanups</span>
+          <span class="value">$deleted</span>
+        </div>
+      </div>
       <a href="/api-info">View API Guide</a>
     </main>
   </body>

@@ -12,3 +12,6 @@ CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*")
 
 DB_CONNECT_ARGS = {"check_same_thread": False} if DB_URL.startswith("sqlite") else {}
 ENABLE_CLEANER = os.getenv("ENABLE_CLEANER", "true").lower() in {"true", "1", "yes"}
+MAX_FILE_SIZE = int(os.getenv("MAX_FILE_SIZE_BYTES", str(10 * 1024 * 1024)))
+RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
+CACHE_MAX_AGE_SECONDS = int(os.getenv("CACHE_MAX_AGE_SECONDS", "3600"))
