@@ -12,7 +12,6 @@ def client(tmp_path, monkeypatch):
     if project_root_str not in sys.path:
         sys.path.insert(0, project_root_str)
     db_path = tmp_path / "test.db"
-    monkeypatch.setenv("API_KEY", "test-key")
     monkeypatch.setenv("UPLOAD_DIR", str(tmp_path))
     monkeypatch.setenv("DB_URL", f"sqlite:///{db_path}")
     monkeypatch.setenv("ENABLE_CLEANER", "false")
@@ -30,21 +29,13 @@ def client(tmp_path, monkeypatch):
     with TestClient(main.app) as test_client:
         test_client.upload_dir = tmp_path  # type: ignore[attr-defined]
         yield test_client
-
-
-def test_upload_requires_api_key(client):
-    response = client.post("/upload", files={"file": ("hello.txt", b"hi", "text/plain")})
-    assert response.status_code == 401
-
-
 def test_upload_list_and_serve(client):
-    headers = {"x-api-key": "test-key"}
-    response = client.post("/upload", headers=headers, files={"file": ("hello.txt", b"hi", "text/plain")})
+    response = client.post("/upload", files={"file": ("hello.txt", b"hi", "text/plain")})
     assert response.status_code == 200
     file_id = response.json()["id"]
     stored_url = response.json()["url"]
 
-    list_response = client.get("/list", headers=headers)
+    list_response = client.get("/list")
     assert list_response.status_code == 200
     assert any(item["id"] == file_id for item in list_response.json())
 
@@ -59,3 +50,13 @@ def test_directory_traversal_blocked(client):
 
     response = client.get("/..%2f..%2f" + outside_file.name)
     assert response.status_code == 404
+
+
+def test_homepage_and_api_docs(client):
+    home_response = client.get("/", headers={"accept": "text/html"})
+    assert home_response.status_code == 200
+    assert "AlterBase CDN" in home_response.text
+
+    api_response = client.get("/api-info", headers={"accept": "text/html"})
+    assert api_response.status_code == 200
+    assert "AlterBase CDN API" in api_response.text

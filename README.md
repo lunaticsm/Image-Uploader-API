@@ -3,7 +3,7 @@
 FastAPI application that stores uploaded files to disk, tracks them with SQLModel, and serves them back through a lightweight CDN-like interface.
 
 ## Features
-- Protected upload and listing endpoints secured with an API key header.
+- Public upload and listing endpoints with UUID-based storage.
 - Files stored with generated UUID names while preserving the original name for metadata.
 - Optional background cleaner that prunes files older than a configured retention window.
 - SQLite by default, with configurable database URL via environment variables.
@@ -15,12 +15,6 @@ python3 -m venv venv
 source venv/bin/activate
 pip install --upgrade pip
 pip install -r requirements.txt
-```
-
-Create a `.env` (or export environment variables) with at least:
-
-```
-API_KEY=choose-a-strong-secret
 ```
 
 Optional settings:
@@ -43,8 +37,6 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 --proxy-headers
 
 ## API Overview
 
-All protected endpoints require the header `x-api-key: <API_KEY>`.
-
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/upload` | Accepts multipart file upload, stores file, returns metadata (`id`, `url`, `size`, `type`). |
@@ -66,12 +58,9 @@ pytest
 ```
 
 The test suite spins up the FastAPI app against a temporary SQLite database to cover:
-- API key enforcement on uploads.
 - Upload/list/serve happy path.
 - Directory traversal hardening for file serving.
 
 ## Deployment Notes
-
-- Ensure `API_KEY` is always set in your deployment environment—startup fails otherwise.
 - When using SQLite, the app configures thread-safe connection settings. For higher concurrency, consider a PostgreSQL or MySQL instance and update `DB_URL`.
 - Mount or back up `UPLOAD_DIR` storage if files need to persist beyond the cleaner retention window.
