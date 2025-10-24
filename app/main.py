@@ -1,4 +1,5 @@
 import logging
+from datetime import datetime
 from pathlib import Path
 from string import Template
 from urllib.parse import quote
@@ -93,9 +94,10 @@ async def home():
         "index.html",
         {
             "max_file_mb": f"{MAX_FILE_SIZE_MB:.1f}",
-            "uploads": stats.get("uploads", 0),
-            "downloads": stats.get("downloads", 0),
-            "deleted": stats.get("deleted", 0),
+            "uploads": str(stats.get("uploads", 0)),
+            "downloads": str(stats.get("downloads", 0)),
+            "deleted": str(stats.get("deleted", 0)),
+            "year": str(datetime.utcnow().year),
         },
     )
     return HTMLResponse(content=html)
@@ -105,9 +107,17 @@ async def home():
 async def api_info():
     html = render_template(
         "api.html",
-        {"max_file_mb": f"{MAX_FILE_SIZE_MB:.1f}", "rate_limit": RATE_LIMIT_PER_MINUTE},
+        {"max_file_mb": f"{MAX_FILE_SIZE_MB:.1f}", "rate_limit": str(RATE_LIMIT_PER_MINUTE)},
     )
     return HTMLResponse(content=html)
+
+
+@app.get("/metrics", dependencies=[Depends(enforce_rate_limit)])
+def metrics_snapshot():
+    data = metrics.snapshot()
+    response = JSONResponse(data)
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    return response
 
 # --- Routes ---
 

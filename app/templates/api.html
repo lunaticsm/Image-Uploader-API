@@ -80,7 +80,7 @@
       <h1>AlterBase CDN API</h1>
       <p class="lead">
         Upload files and retrieve shareable URLs with a minimal HTTP API. Each client is limited to
-        $rate_limit requests per minute and individual uploads are capped at $max_file_mb MB.
+        ${rate_limit} requests per minute and individual uploads are capped at ${max_file_mb} MB.
       </p>
 
       <section>
@@ -93,7 +93,7 @@
         <ul>
           <li>
             <strong>POST /upload</strong><br />
-            Multipart form request with <code>file</code> field (max $max_file_mb MB). Returns JSON metadata with
+            Multipart form request with <code>file</code> field (max ${max_file_mb} MB). Returns JSON metadata with
             <code>id</code>, <code>url</code>, <code>size</code>, <code>type</code>.
           </li>
           <li>
@@ -122,6 +122,17 @@
           <li>The optional cleaner job removes files older than the configured retention window.</li>
           <li>Use the relative URL from <code>/upload</code> responses to build your CDN links.</li>
         </ul>
+      </section>
+
+      <section>
+        <h2>Build Your Own</h2>
+        <p>
+          Clone the open source project from
+          <a href="https://github.com/lunaticsm/Image-Uploader-API" target="_blank" rel="noopener"
+            >github.com/lunaticsm/Image-Uploader-API</a
+          >
+          to deploy this stack on your own infrastructure.
+        </p>
       </section>
 
       <section>
