@@ -1,4 +1,5 @@
 import importlib
+import re
 import sys
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -69,6 +70,18 @@ def test_upload_list_serve_and_cache_headers(client):
     assert serve_response.status_code == 200
     assert serve_response.content == b"hi"
     assert serve_response.headers["Cache-Control"] == "public, max-age=120"
+
+
+def test_upload_slug_is_short(client):
+    response = client.post("/upload", files={"file": ("slug.txt", b"x", "text/plain")})
+    assert response.status_code == 200
+    payload = response.json()
+    from app import config as app_config
+
+    slug = payload["id"]
+    assert len(slug) == app_config.FILE_ID_LENGTH
+    assert re.fullmatch(rf"[A-Za-z0-9]{{{app_config.FILE_ID_LENGTH}}}", slug)
+    assert payload["url"].split("/")[-1].startswith(slug)
 
 
 def test_directory_traversal_blocked(client):
