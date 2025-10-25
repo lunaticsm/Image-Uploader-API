@@ -3,7 +3,7 @@
 FastAPI-powered micro CDN for storing and serving uploaded assets. Files are written to disk, indexed with SQLModel, and delivered with CDN-friendly cache headers plus live usage stats on the landing page.
 
 ## Features
-- Public upload and listing endpoints with UUID-based storage.
+- Public upload and listing endpoints with compact base62 slugs (Telegraph/ImgBB style URLs).
 - 10&nbsp;MB per-file upload cap with friendly error responses.
 - In-memory rate limiting (per-client/minute) to prevent abuse.
 - Automatic cleanup job that prunes files after the configured retention window.
@@ -37,6 +37,7 @@ Optional environment variables:
 | `CACHE_MAX_AGE_SECONDS` | `3600` | Cache lifetime used for served files. |
 | `ADMIN_PASSWORD` | `admin-dev-password` | Password required to access the `/admin` dashboard. |
 | `ADMIN_LOCK_STEP_SECONDS` | `300` | Lock duration increment (in seconds) after repeated failed admin logins. |
+| `FILE_ID_LENGTH` | `7` | Length of generated slug IDs (min 4, max 32). |
 
 Run the API:
 
@@ -88,9 +89,9 @@ Key environment variables for production deployments:
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/upload` | Accepts multipart file upload (respecting the configured size limit) and returns metadata (`id`, `url`, `size`, `type`). |
-| `GET` | `/{filename}` | Serves a stored file by UUID filename and includes `Cache-Control` headers. |
+| `GET` | `/{filename}` | Serves a stored file by slug filename and includes `Cache-Control` headers. |
 
-Returned `url` values are relative (e.g. `/3d4d...jpg`), suitable for prefixing with your CDN/API host.
+Returned `url` values are relative (e.g. `/aB7xYzQ.jpg`), suitable for prefixing with your CDN/API host.
 
 ### Admin Dashboard
 - Visit `/admin` with the header `X-Admin-Password: <ADMIN_PASSWORD>` (or include `password` in the query/form) to view uploads, downloads, cleanup counts, recent files, and trigger per-file or bulk deletions.
