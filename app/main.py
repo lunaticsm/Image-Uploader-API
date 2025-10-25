@@ -13,7 +13,7 @@ from app.core.exceptions import register_exception_handlers
 from app.core.metrics import metrics
 from app.db import engine, init_db
 
-app = FastAPI(title="AlterBase CDN API", version="3.0.0")
+app = FastAPI(title="AlterBase CDN API", version="3.5.0")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("image_uploader")
