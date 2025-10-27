@@ -12,7 +12,7 @@ FastAPI-powered micro CDN for storing and serving uploaded assets. Files are wri
 - SQLite by default, with environment overrides for production databases.
 
 ## Live Demo
-- Try the hosted instance at [https://cdn.lunaticsm.web.id](https://cdn.alterbase.web.id/) to see the animated metrics, HTML landing page, and API guide in action.
+- Try the hosted instance at [https://cdn.alterbase.web.id](https://cdn.alterbase.web.id) to see the animated metrics, HTML landing page, and API guide in action.
 
 ## Getting Started
 
