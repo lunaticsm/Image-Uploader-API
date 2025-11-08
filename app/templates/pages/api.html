@@ -29,10 +29,27 @@
             <code>id</code>, <code>url</code>, <code>size</code>, <code>type</code>.
           </li>
           <li>
+            <strong>POST /upload-permanent</strong><br />
+            Multipart form request with <code>file</code> field and API key authentication. Returns JSON metadata with
+            <code>id</code>, <code>url</code>, <code>size</code>, <code>type</code>, <code>permanent</code>.
+            Permanent files are not subject to automatic cleanup.
+          </li>
+          <li>
             <strong>GET /{filename}</strong><br />
             Serves the stored file given the UUID filename returned from <code>/upload</code>. Responses include
             cache headers (<code>Cache-Control: public, max-age</code>) for CDN friendliness.
           </li>
+        </ul>
+      </section>
+
+      <section>
+        <h2>API Key Authentication</h2>
+        <p>
+          For permanent file uploads, you need to provide a valid API key in one of these ways:
+        </p>
+        <ul>
+          <li>Header: <code>X-API-Key: your-api-key</code></li>
+          <li>Query parameter: <code>?api_key=your-api-key</code></li>
         </ul>
       </section>
 

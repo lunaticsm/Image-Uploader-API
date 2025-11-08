@@ -13,6 +13,7 @@ from sqlmodel import Session, select
 from app.config import (
     ADMIN_LOCK_STEP_SECONDS,
     ADMIN_PASSWORD,
+    API_KEY,
     CACHE_MAX_AGE_SECONDS,
     MAX_FILE_SIZE,
     RATE_LIMIT_PER_MINUTE,
@@ -34,6 +35,19 @@ rate_limiter = RateLimiter(RATE_LIMIT_PER_MINUTE)
 MAX_FILE_SIZE_MB = MAX_FILE_SIZE / (1024 * 1024)
 UPLOAD_ROOT = Path(UPLOAD_DIR).resolve()
 _admin_attempts: dict[str, dict] = {}
+
+
+def require_api_key(request: Request):
+    """Dependency to check for valid API key in headers or query parameters."""
+    if not API_KEY:
+        raise HTTPException(status_code=500, detail="API key not configured on the server")
+    
+    api_key = request.headers.get("x-api-key") or request.query_params.get("api_key")
+    
+    if not api_key or api_key != API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid or missing API key")
+        
+    return api_key
 
 
 def _flash_html(message: str | None, level: str = "info", reason: str | None = None) -> str:
@@ -352,6 +366,57 @@ async def upload(file: UploadFile = File(...), session: Session = Depends(get_se
         "url": f"/{quote(stored_name)}",
         "size": size_bytes,
         "type": file.content_type,
+    }
+
+
+@router.post("/upload-permanent", dependencies=[Depends(require_api_key), Depends(enforce_rate_limit)])
+async def upload_permanent(file: UploadFile = File(...), session: Session = Depends(get_session)):
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="Missing filename")
+    data = await file.read()
+    size_bytes = len(data)
+    if size_bytes > MAX_FILE_SIZE:
+        logger.warning(
+            "event=upload_rejected reason=max_size filename=%s size_bytes=%s limit_bytes=%s",
+            file.filename,
+            size_bytes,
+            MAX_FILE_SIZE,
+        )
+        raise HTTPException(
+            status_code=413,
+            detail=f"File too large. Maximum allowed size is {MAX_FILE_SIZE_MB:.1f} MB.",
+        )
+
+    stored_name, size_bytes = save_file(data, file.filename, file.content_type or "application/octet-stream")
+    file_id = stored_name.split(".")[0]
+
+    record = FileModel(
+        id=file_id,
+        original_name=file.filename,
+        stored_name=stored_name,
+        content_type=file.content_type or "application/octet-stream",
+        size_bytes=size_bytes,
+        permanent=True,
+    )
+    session.add(record)
+    session.commit()
+
+    metrics.record_upload(size_bytes)
+    logger.info(
+        "event=upload_success file_id=%s stored_name=%s size_bytes=%s content_type=%s permanent=%s",
+        file_id,
+        stored_name,
+        size_bytes,
+        file.content_type or "application/octet-stream",
+        True,
+    )
+
+    return {
+        "id": file_id,
+        "url": f"/{quote(stored_name)}",
+        "size": size_bytes,
+        "type": file.content_type,
+        "permanent": True,
     }
 
 

@@ -9,6 +9,7 @@ UPLOAD_DIR = os.getenv(
 DB_URL = os.getenv("DB_URL", "sqlite:///./cdn.db")
 DELETE_AFTER_HOURS = int(os.getenv("DELETE_AFTER_HOURS", "72"))
 CORS_ORIGINS = os.getenv("CORS_ORIGINS", "*")
+API_KEY = os.getenv("API_KEY")
 
 DB_CONNECT_ARGS = {"check_same_thread": False} if DB_URL.startswith("sqlite") else {}
 ENABLE_CLEANER = os.getenv("ENABLE_CLEANER", "true").lower() in {"true", "1", "yes"}

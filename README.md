@@ -89,9 +89,18 @@ Key environment variables for production deployments:
 | Method | Path | Description |
 |--------|------|-------------|
 | `POST` | `/upload` | Accepts multipart file upload (respecting the configured size limit) and returns metadata (`id`, `url`, `size`, `type`). |
+| `POST` | `/upload-permanent` | Accepts multipart file upload with API key authentication and returns metadata (`id`, `url`, `size`, `type`, `permanent`). Permanent files are not subject to automatic cleanup. |
 | `GET` | `/{filename}` | Serves a stored file by slug filename and includes `Cache-Control` headers. |
 
 Returned `url` values are relative (e.g. `/aB7xYzQ.jpg`), suitable for prefixing with your CDN/API host.
+
+### API Key Authentication
+
+For permanent file uploads, you need to provide a valid API key in one of these ways:
+- Header: `X-API-Key: your-api-key`
+- Query parameter: `?api_key=your-api-key`
+
+Set the `API_KEY` environment variable to configure the server's expected API key.
 
 ### Admin Dashboard
 - Visit `/admin` with the header `X-Admin-Password: <ADMIN_PASSWORD>` (or include `password` in the query/form) to view uploads, downloads, cleanup counts, recent files, and trigger per-file or bulk deletions.

@@ -39,7 +39,8 @@ def delete_expired_files(engine):
     from datetime import datetime
     with Session(engine) as session:
         cutoff = datetime.utcnow() - timedelta(hours=DELETE_AFTER_HOURS)
-        stmt = select(File).where(File.created_at < cutoff)
+        # Only delete non-permanent files that are older than the cutoff
+        stmt = select(File).where(File.created_at < cutoff, File.permanent == False)
         old_files = session.exec(stmt).all()
         for f in old_files:
             try:
