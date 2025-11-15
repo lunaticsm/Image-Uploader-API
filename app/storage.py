@@ -76,19 +76,21 @@ def delete_expired_files(engine):
     from datetime import datetime
     from sqlalchemy.exc import OperationalError
     from app.db import ensure_connection
+    import time
 
     # First, ensure the connection is alive
     if not ensure_connection():
         # If connection is dead, try to let SQLAlchemy handle it with the new connection pool settings
         pass
 
-    # Retry mechanism to handle connection issues
-    max_retries = 3
+    # Exponential backoff retry mechanism to handle connection issues
+    max_retries = 5
+    base_delay = 1  # Start with 1 second
     for attempt in range(max_retries):
         try:
             with Session(engine) as session:
                 cutoff = datetime.utcnow() - timedelta(hours=DELETE_AFTER_HOURS)
-                # Only delete non-permanent files that are older than the cutoff
+                # Only delete non-permanent files that are both expired AND backed up remotely
                 if MEGA_BACKUP_ENABLED:
                     # Only delete files that are both expired AND backed up remotely
                     stmt = select(File).where(
@@ -106,6 +108,7 @@ def delete_expired_files(engine):
                 old_files = session.exec(stmt).all()
 
                 deleted = 0
+                mega_delete_failures = 0
                 for f in old_files:
                     try:
                         os.remove(os.path.join(UPLOAD_DIR, f.stored_name))
@@ -118,26 +121,62 @@ def delete_expired_files(engine):
                             backup_service = _get_mega_backup()
                             backup_service.delete_file(f.backup_id)
                         except Exception as e:
-                            print(f"Failed to delete file from MEGA: {e}")
+                            mega_delete_failures += 1
+                            logger = logging.getLogger("image_uploader.storage")
+                            logger.error(
+                                "event=mega_delete_failure file_id=%s backup_id=%s error=%s",
+                                f.id, f.backup_id, str(e)
+                            )
                             # Continue with local deletion even if MEGA deletion fails
+                            # This prevents backup drift where local files are deleted but MEGA copies remain
 
                     session.delete(f)
                     deleted += 1
 
                 session.commit()
-            return deleted
+
+                # Log summary if there were any MEGA deletion failures
+                if mega_delete_failures > 0:
+                    logger = logging.getLogger("image_uploader.storage")
+                    logger.warning(
+                        "event=cleaner_summary deleted=%d mega_deletion_failures=%d",
+                        deleted, mega_delete_failures
+                    )
+
+                return deleted
         except OperationalError as e:
-            if "SSL connection has been closed unexpectedly" in str(e) or "connection not found" in str(e) or "server closed the connection unexpectedly" in str(e):
+            error_msg = str(e).lower()
+            if ("ssl connection has been closed unexpectedly" in error_msg or
+                "connection not found" in error_msg or
+                "server closed the connection unexpectedly" in error_msg or
+                "connection timed out" in error_msg or
+                "could not connect to server" in error_msg):
+
                 if attempt < max_retries - 1:
-                    # Wait a bit before retrying
-                    import time
-                    time.sleep(1)
+                    # Exponential backoff: wait longer after each failed attempt
+                    delay = base_delay * (2 ** attempt)  # 1s, 2s, 4s, 8s, 16s
+                    logger = logging.getLogger("image_uploader.storage")
+                    logger.warning(
+                        "event=cleaner_retry attempt=%d delay_seconds=%d error=%s",
+                        attempt + 1, delay, str(e)
+                    )
+                    time.sleep(delay)
                     continue
                 else:
+                    logger = logging.getLogger("image_uploader.storage")
+                    logger.error(
+                        "event=cleaner_give_up max_retries=%d error=%s",
+                        max_retries, str(e)
+                    )
                     # Re-raise the exception if all retries are exhausted
                     raise
             else:
                 # Re-raise other types of OperationalError
+                logger = logging.getLogger("image_uploader.storage")
+                logger.error(
+                    "event=cleaner_unexpected_error error=%s",
+                    str(e)
+                )
                 raise
 
 
@@ -160,8 +199,11 @@ def backup_and_mark(session: Session, file_id: str):
 
                 return True
             except Exception as e:
-                logger = logging.getLogger("image_uploader")
-                logger.error(f"Failed to backup file {file_id} to MEGA: {e}")
+                logger = logging.getLogger("image_uploader.storage")
+                logger.error(
+                    "event=mega_backup_failure file_id=%s error=%s",
+                    file_id, str(e)
+                )
                 return False
 
     return False

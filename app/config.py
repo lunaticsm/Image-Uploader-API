@@ -25,3 +25,6 @@ MEGA_BACKUP_ENABLED = os.getenv("MEGA_BACKUP_ENABLED", "false").lower() in {"tru
 MEGA_EMAIL = os.getenv("MEGA_EMAIL", "")
 MEGA_PASSWORD = os.getenv("MEGA_PASSWORD", "")
 MEGA_FOLDER_NAME = os.getenv("MEGA_FOLDER_NAME", "")
+
+# Redis Configuration
+REDIS_URL = os.getenv("REDIS_URL", "")

@@ -58,7 +58,7 @@ Run the API (after building the frontend):
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 --proxy-headers
 ```
 
-The React UI lives at `/app` (with routes for the landing page, API guide, and admin dashboard). Static assets for the SPA are served from `/frontend`.
+The React UI lives at `/app` (with routes for the landing page, API guide, and admin dashboard at `/app/admin`). Static assets for the SPA are served from `/frontend`.
 
 ### Frontend (React)
 
@@ -137,7 +137,9 @@ For permanent file uploads, you need to provide a valid API key in one of these 
 Set the `API_KEY` environment variable to configure the server's expected API key.
 
 ### Admin Dashboard
-- Visit `/admin` with the header `X-Admin-Password: <ADMIN_PASSWORD>` (or include `password` in the query/form) to view uploads, downloads, cleanup counts, recent files, and trigger per-file or bulk deletions.
+- Visit `/app/admin/login` to access the modern React-based admin dashboard.
+- The new admin interface provides a better user experience with metrics, file management, and bulk operations.
+- Alternatively, you can still use the API endpoints directly with the header `X-Admin-Password: <ADMIN_PASSWORD>` for programmatic access.
 - After three failed attempts the admin login is locked; each lock adds `ADMIN_LOCK_STEP_SECONDS` (default 5 minutes) to the wait time.
 
 ## Cleaning Expired Files

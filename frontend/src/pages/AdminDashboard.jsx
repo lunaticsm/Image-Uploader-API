@@ -1,19 +1,22 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 import { AdminAuth, fetchJson } from "../lib/api";
 import AnimatedNumber from "../components/AnimatedNumber";
 import { formatBytes, formatNumber } from "../lib/formatters";
+import LoadingSpinner from "../components/LoadingSpinner";
+import Skeleton from "../components/Skeleton";
 
 function AdminDashboard() {
   const navigate = useNavigate();
   const [password, setPassword] = useState(AdminAuth.get());
   const [summary, setSummary] = useState(null);
   const [files, setFiles] = useState([]);
+  const [deletingFiles, setDeletingFiles] = useState(new Set());
   const [message, setMessage] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  const headers = password ? { "X-Admin-Password": password } : {};
+  const headers = useMemo(() => password ? { "X-Admin-Password": password } : {}, [password]);
 
   const ensurePassword = useCallback(() => {
     if (!password) {
@@ -44,23 +47,46 @@ function AdminDashboard() {
     } finally {
       setLoading(false);
     }
-  }, [headers, ensurePassword, navigate, password]);
+  }, [headers, ensurePassword, navigate]);
 
   useEffect(() => {
     loadData();
   }, [loadData]);
 
+  // Cleanup deletingFiles after a timeout to ensure they're properly cleared
+  useEffect(() => {
+    if (deletingFiles.size > 0) {
+      const timeoutId = setTimeout(() => {
+        setDeletingFiles(new Set());
+      }, 1000); // Clear after 1 second, which should be enough for the animation
+
+      return () => clearTimeout(timeoutId);
+    }
+  }, [deletingFiles]);
+
   const handleDelete = async (fileId) => {
     if (!ensurePassword()) return;
+
     try {
+      // Add visual feedback - mark file for deletion (fade out animation)
+      setDeletingFiles(prev => new Set([...prev, fileId]));
+
       await fetchJson(`/api/admin/files/${encodeURIComponent(fileId)}`, {
         method: "DELETE",
         headers,
       });
+
       setMessage("File removed 🗑️");
       loadData();
+      // The row will be removed from the UI when loadData() refreshes the list
     } catch (err) {
       setError(err.message);
+      // If deletion fails, remove the file from the deleting state
+      setDeletingFiles(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(fileId);
+        return newSet;
+      });
     }
   };
 
@@ -101,70 +127,126 @@ function AdminDashboard() {
           <p className="text-xs uppercase tracking-[0.35em] text-secondary">Admin Dashboard</p>
           <h1 className="text-2xl font-semibold">Control room 🛠️</h1>
         </div>
-        <div className="flex gap-2">
-          <button className="button secondary" onClick={loadData} disabled={loading}>
-            Refresh
+        <div className="flex flex-col sm:flex-row gap-2 sm:gap-3">
+          <button
+            className="button secondary hover:scale-105 transition-transform duration-200 ripple px-4 py-2 sm:px-6"
+            onClick={loadData}
+            disabled={loading}
+          >
+            {loading ? (
+              <span className="flex items-center gap-2">
+                <span className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></span>
+                Loading...
+              </span>
+            ) : "Refresh"}
           </button>
-          <button className="button secondary" onClick={handleLogout}>
+          <button
+            className="button secondary hover:scale-105 transition-transform duration-200 ripple px-4 py-2 sm:px-6"
+            onClick={handleLogout}
+          >
             Logout
           </button>
-          <button className="button primary" onClick={handleDeleteAll}>
+          <button
+            className="button primary hover:scale-105 transition-transform duration-200 ripple px-4 py-2 sm:px-6"
+            onClick={handleDeleteAll}
+          >
             Delete All
           </button>
         </div>
       </div>
 
-      {message && <p className="text-sm text-emerald-300">{message}</p>}
-      {error && <p className="text-sm text-rose-400">{error}</p>}
+      {message && <p className="text-sm text-emerald-300 animate-fadeIn">{message}</p>}
+      {error && <p className="text-sm text-rose-400 animate-fadeIn">{error}</p>}
 
-      {summary && (
+      {summary ? (
         <section className="grid gap-4 md:grid-cols-4">
-          {summaryCards.map((item) => (
-            <div key={item.label} className="metric-card">
+          {summaryCards.map((item, index) => (
+            <div
+              key={item.label}
+              className="metric-card animate-fadeInSlideUp"
+              style={{ animationDelay: `${index * 100}ms` }}
+            >
               <span className="label">{item.icon} {item.label}</span>
               <AnimatedNumber value={item.value} format={item.formatter} />
             </div>
           ))}
         </section>
+      ) : (
+        <section className="grid gap-4 md:grid-cols-4">
+          {[1, 2, 3, 4].map((_, index) => (
+            <Skeleton key={index} className="h-32" />
+          ))}
+        </section>
       )}
 
       <section className="glass-card p-6 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-xl font-semibold">Recent uploads</h2>
-          <span className="text-sm text-slate-400">{files.length} files</span>
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
+          <div>
+            <h2 className="text-xl font-semibold">Recent uploads</h2>
+            <p className="text-sm text-slate-400">{files.length} files</p>
+          </div>
         </div>
-        <div className="overflow-x-auto">
-          <table className="table-modern">
-            <thead>
+        <div className="overflow-x-auto rounded-lg">
+          <table className="table-modern w-full">
+            <thead className="bg-white/5">
               <tr>
-                <th>ID</th>
-                <th>Filename</th>
-                <th>Size</th>
-                <th>Created</th>
-                <th />
+                <th className="text-left">ID</th>
+                <th className="text-left">Filename</th>
+                <th className="text-left">Size</th>
+                <th className="text-left">Created</th>
+                <th className="text-right">Actions</th>
               </tr>
             </thead>
             <tbody>
-              {files.length === 0 && (
+              {loading && files.length === 0 ? (
+                Array.from({ length: 5 }).map((_, index) => (
+                  <tr key={`skeleton-${index}`} className="animate-pulse">
+                    <td className="py-4"><Skeleton className="h-4 w-16" /></td>
+                    <td><Skeleton className="h-4 w-full max-w-[120px]" /></td>
+                    <td><Skeleton className="h-4 w-12" /></td>
+                    <td><Skeleton className="h-4 w-20" /></td>
+                    <td className="text-right"><Skeleton className="h-6 w-16 ml-auto" /></td>
+                  </tr>
+                ))
+              ) : files.length === 0 ? (
                 <tr>
-                  <td colSpan="5" className="py-4 text-center text-slate-500">
-                    {loading ? "Loading…" : "No files yet"}
+                  <td colSpan="5" className="py-12 text-center text-slate-500">
+                    <div className="flex flex-col items-center justify-center gap-3">
+                      <span className="text-4xl">📭</span>
+                      <span>No files yet</span>
+                      <p className="text-sm text-slate-400">Upload files to see them appear here</p>
+                    </div>
                   </td>
                 </tr>
+              ) : (
+                files.map((file, index) => (
+                  <tr
+                    key={file.id}
+                    data-file-id={file.id}
+                    className={`hover:bg-white/5 transition-all duration-200 animate-fadeInSlideUp border-b border-white/5 last:border-0 ${
+                      deletingFiles.has(file.id)
+                        ? 'opacity-0 -translate-x-5 transition-all duration-300 ease-in-out'
+                        : 'transition-all duration-200'
+                    }`}
+                    style={{ animationDelay: `${index * 50}ms` }}
+                  >
+                    <td className="font-mono text-xs text-slate-400 py-3 max-w-[100px] truncate" title={file.id}>{file.id}</td>
+                    <td className="py-3 max-w-[200px] truncate" title={file.name}>{file.name}</td>
+                    <td className="py-3">{formatBytes(file.size)}</td>
+                    <td className="py-3">{new Date(file.created_at).toLocaleDateString()}</td>
+                    <td className="py-3 text-right">
+                      <button
+                        className="text-rose-300 text-sm hover:text-rose-200 hover:scale-110 transition-all duration-200 ripple px-3 py-1 rounded-md hover:bg-rose-500/10 disabled:opacity-50"
+                        onClick={() => handleDelete(file.id)}
+                        title={`Delete ${file.name}`}
+                        disabled={deletingFiles.has(file.id)}
+                      >
+                        Delete
+                      </button>
+                    </td>
+                  </tr>
+                ))
               )}
-              {files.map((file) => (
-                <tr key={file.id}>
-                  <td className="font-mono text-xs text-slate-400">{file.id}</td>
-                  <td>{file.name}</td>
-                  <td>{formatBytes(file.size)}</td>
-                  <td>{new Date(file.created_at).toLocaleString()}</td>
-                  <td>
-                    <button className="text-rose-300 text-sm" onClick={() => handleDelete(file.id)}>
-                      Delete
-                    </button>
-                  </td>
-                </tr>
-              ))}
             </tbody>
           </table>
         </div>

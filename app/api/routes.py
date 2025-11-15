@@ -5,8 +5,9 @@ import html
 from datetime import datetime, timedelta
 from pathlib import Path
 from urllib.parse import quote
+import json
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
+from fastapi import APIRouter, BackgroundTasks, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from sqlmodel import Session, select
 
@@ -19,6 +20,7 @@ from app.config import (
     RATE_LIMIT_PER_MINUTE,
     UPLOAD_DIR,
     MEGA_BACKUP_ENABLED,
+    REDIS_URL,
 )
 from app.core.metrics import metrics
 from app.core.rate_limit import RateLimiter
@@ -37,7 +39,8 @@ MAX_FILE_SIZE_MB = MAX_FILE_SIZE / (1024 * 1024)
 UPLOAD_ROOT = Path(UPLOAD_DIR).resolve()
 FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist" / "index.html"
 FRONTEND_PRESENT = FRONTEND_DIST.exists()
-_admin_attempts: dict[str, dict] = {}
+# Admin attempts will be stored in Redis when available, fallback to in-memory
+# We'll implement Redis-based storage for admin attempts
 
 
 def handle_backup_after_upload(file_id: str, stored_name: str):
@@ -52,16 +55,31 @@ def handle_backup_after_upload(file_id: str, stored_name: str):
             backup_and_mark(session, file_id)
 
 
+def backup_to_mega_in_background(file_id: str):
+    """Background task function to handle MEGA backup"""
+    if MEGA_BACKUP_ENABLED:
+        from app.storage import backup_and_mark
+        from app.db import session_scope
+
+        logger.info(f"Starting background MEGA backup for file {file_id}")
+        try:
+            with session_scope() as session:
+                backup_and_mark(session, file_id)
+            logger.info(f"Successfully backed up file {file_id} to MEGA")
+        except Exception as e:
+            logger.error(f"Failed to backup file {file_id} to MEGA in background: {e}")
+
+
 def require_api_key(request: Request):
     """Dependency to check for valid API key in headers or query parameters."""
     if not API_KEY:
-        raise HTTPException(status_code=500, detail="API key not configured on the server")
-    
+        raise HTTPException(status_code=403, detail="Permanent uploads are disabled on this server")
+
     api_key = request.headers.get("x-api-key") or request.query_params.get("api_key")
-    
+
     if not api_key or api_key != API_KEY:
         raise HTTPException(status_code=401, detail="Invalid or missing API key")
-        
+
     return api_key
 
 
@@ -127,29 +145,6 @@ async def api_info_redirect():
     return HTMLResponse(content=html)
 
 
-def _render_admin_table(files: list[FileModel]) -> str:
-    rows: list[str] = []
-    for file in files:
-        preview = f"<img src='/{quote(file.stored_name)}' alt='preview' loading='lazy' />"
-        rows.append(
-            "<tr>"
-            f"<td>{html.escape(file.id)}</td>"
-            f"<td class='preview-cell'>{preview}</td>"
-            f"<td>{html.escape(file.original_name)}</td>"
-            f"<td>{file.size_bytes} B</td>"
-            f"<td>{file.created_at}</td>"
-            "<td>"
-            "<form method='post' action='/admin/delete' class='inline'>"
-            f"<input type='hidden' name='file_id' value='{html.escape(file.id)}' />"
-            "<input type='password' name='password' placeholder='Admin password' required />"
-            "<button type='submit'>Delete</button>"
-            "</form>"
-            "</td>"
-            "</tr>"
-        )
-    return "".join(rows) or "<tr><td colspan='5'>No files yet</td></tr>"
-
-
 def _human_bytes(value: int) -> str:
     units = ["B", "KB", "MB", "GB", "TB"]
     size = float(max(value, 0))
@@ -159,32 +154,6 @@ def _human_bytes(value: int) -> str:
             return f"{formatted or '0'} {unit}"
         size /= 1024
     return "0 B"
-
-
-def _render_admin_login(message: str | None = None, level: str = "info", reason: str | None = None) -> str:
-    flash_html = _flash_html(message, level, reason)
-    return render_template("pages/admin_login.html", {"flash_message": flash_html})
-
-
-def _render_admin_page(
-    session: Session, message: str | None = None, level: str = "info", reason: str | None = None
-) -> str:
-    totals = fetch_storage_totals(session)
-    snapshot = metrics.snapshot()
-    stmt = select(FileModel).order_by(FileModel.created_at.desc()).limit(50)
-    files = session.exec(stmt).all()
-    flash_html = _flash_html(message, level, reason)
-    return render_template(
-        "pages/admin.html",
-        {
-            "uploads": totals["total_files"],
-            "downloads": snapshot.get("downloads", 0),
-            "deleted": snapshot.get("deleted", 0),
-            "storage_human": _human_bytes(totals["total_bytes"]),
-            "table_rows": _render_admin_table(files),
-            "flash_message": flash_html,
-        },
-    )
 
 
 async def _get_admin_password(request: Request) -> str | None:
@@ -205,11 +174,67 @@ async def _get_admin_password(request: Request) -> str | None:
     return None
 
 
+# Initialize Redis for admin attempts (with fallback to memory)
+def _get_admin_redis_client():
+    if REDIS_URL:
+        try:
+            import redis
+            return redis.from_url(REDIS_URL)
+        except ImportError:
+            logger.warning("Redis not available, using in-memory storage for admin attempts")
+        except Exception:
+            logger.warning("Could not connect to Redis, using in-memory storage for admin attempts")
+    return None
+
+
+def _get_admin_attempts_redis_key(client: str) -> str:
+    return f"admin_attempts:{client}"
+
+
+# Module-level variable for in-memory fallback
+_admin_attempts_memory = {}
+
+def _get_admin_attempts(client: str):
+    """Get admin attempts from Redis or fallback to in-memory."""
+    redis_client = _get_admin_redis_client()
+    if redis_client:
+        try:
+            key = _get_admin_attempts_redis_key(client)
+            attempts_data = redis_client.get(key)
+            if attempts_data:
+                return json.loads(attempts_data)
+            return {"failures": 0, "penalty": 0, "lock_until": None}
+        except Exception:
+            logger.warning(f"Failed to get admin attempts from Redis for {client}, using default")
+            return {"failures": 0, "penalty": 0, "lock_until": None}
+    else:
+        # In-memory fallback
+        return _admin_attempts_memory.setdefault(client, {"failures": 0, "penalty": 0, "lock_until": None})
+
+
+def _set_admin_attempts(client: str, state: dict):
+    """Set admin attempts in Redis or fallback to in-memory."""
+    redis_client = _get_admin_redis_client()
+    if redis_client:
+        try:
+            key = _get_admin_attempts_redis_key(client)
+            redis_client.setex(key, 3600, json.dumps(state))  # Expire after 1 hour
+        except Exception:
+            logger.warning(f"Failed to set admin attempts in Redis for {client}")
+            # Still update in-memory as fallback if needed
+            _admin_attempts_memory[client] = state
+    else:
+        # In-memory fallback
+        _admin_attempts_memory[client] = state
+
+
 async def _auth_admin(request: Request, allow_blank: bool):
     client = request.client.host if request.client else "unknown"
-    state = _admin_attempts.setdefault(client, {"failures": 0, "penalty": 0, "lock_until": None})
+    state = _get_admin_attempts(client)
     now = datetime.utcnow()
-    lock_until = state.get("lock_until")
+    lock_until_str = state.get("lock_until")
+    lock_until = datetime.fromisoformat(lock_until_str) if lock_until_str else None
+
     if lock_until and now < lock_until:
         remaining = lock_until - now
         minutes = max(1, int(remaining.total_seconds() // 60) + 1)
@@ -228,6 +253,7 @@ async def _auth_admin(request: Request, allow_blank: bool):
 
     if ADMIN_PASSWORD and password == ADMIN_PASSWORD:
         state["failures"] = 0
+        _set_admin_attempts(client, state)
         return True, None, False
 
     state["failures"] = state.get("failures", 0) + 1
@@ -235,13 +261,15 @@ async def _auth_admin(request: Request, allow_blank: bool):
         state["failures"] = 0
         state["penalty"] = state.get("penalty", 0) + 1
         duration = state["penalty"] * ADMIN_LOCK_STEP_SECONDS
-        state["lock_until"] = now + timedelta(seconds=duration)
+        state["lock_until"] = (now + timedelta(seconds=duration)).isoformat()
         minutes = max(1, duration // 60)
         msg = f"Too many attempts. Too many failures. Locked for {minutes} minutes."
+        _set_admin_attempts(client, state)
         if allow_blank:
             return False, msg, True
         raise HTTPException(status_code=429, detail=msg)
     msg = "Invalid password"
+    _set_admin_attempts(client, state)
     if allow_blank:
         return False, msg, False
     raise HTTPException(status_code=401, detail=msg)
@@ -266,75 +294,6 @@ def _remove_file_from_disk(stored_name: str) -> None:
     path.unlink(missing_ok=True)
 
 
-@router.api_route("/admin", methods=["GET", "POST"], response_class=HTMLResponse)
-async def admin_dashboard(request: Request, session: Session = Depends(get_session)):
-    success, message, locked = await _auth_admin(request, allow_blank=True)
-    if success:
-        html = _render_admin_page(session, message)
-        return HTMLResponse(content=html)
-    html = _render_admin_login(message, "error" if message else "info", "auth" if message else None)
-    status = 429 if locked and message else 200
-    return HTMLResponse(content=html, status_code=status)
-
-
-@router.post("/admin/delete", response_class=HTMLResponse)
-async def admin_delete_file(
-    request: Request,
-    session: Session = Depends(get_session),
-):
-    form = getattr(request.state, "admin_form", None)
-    if form is None:
-        form = await request.form()
-        request.state.admin_form = form
-
-    success, message, locked = await _auth_admin(request, allow_blank=True)
-    if not success:
-        status = 429 if locked else 401
-        failure_message = message or "Admin password required."
-        html = _render_admin_page(session, failure_message, "error", "auth")
-        return HTMLResponse(content=html, status_code=status)
-
-    file_id = form.get("file_id")
-    if not file_id:
-        raise HTTPException(status_code=400, detail="Missing file_id")
-    file = session.get(FileModel, file_id)
-    if not file:
-        html = _render_admin_page(session, "File not found.", "error", "general")
-        return HTMLResponse(content=html, status_code=404)
-
-    _remove_file_from_disk(file.stored_name)
-    session.delete(file)
-    session.commit()
-    html = _render_admin_page(session, "File deleted.", "success", "success")
-    return HTMLResponse(content=html)
-
-
-@router.post("/admin/delete-all", response_class=HTMLResponse)
-async def admin_delete_all(
-    request: Request,
-    session: Session = Depends(get_session),
-):
-    form = getattr(request.state, "admin_form", None)
-    if form is None:
-        form = await request.form()
-        request.state.admin_form = form
-
-    success, message, locked = await _auth_admin(request, allow_blank=True)
-    if not success:
-        status = 429 if locked else 401
-        failure_message = message or "Admin password required."
-        html = _render_admin_page(session, failure_message, "error", "auth")
-        return HTMLResponse(content=html, status_code=status)
-
-    files = session.exec(select(FileModel)).all()
-    deleted = 0
-    for file in files:
-        _remove_file_from_disk(file.stored_name)
-        session.delete(file)
-        deleted += 1
-    session.commit()
-    html = _render_admin_page(session, f"Deleted {deleted} files.", "success", "success")
-    return HTMLResponse(content=html)
 
 
 @router.get("/api/admin/summary")
@@ -399,7 +358,7 @@ async def admin_delete_everything(request: Request, session: Session = Depends(g
 
 
 @router.post("/upload", dependencies=[Depends(enforce_rate_limit)])
-async def upload(file: UploadFile = File(...), session: Session = Depends(get_session)):
+async def upload(file: UploadFile = File(...), background_tasks: BackgroundTasks = BackgroundTasks(), session: Session = Depends(get_session)):
     if not file.filename:
         raise HTTPException(status_code=400, detail="Missing filename")
     data = await file.read()
@@ -429,11 +388,9 @@ async def upload(file: UploadFile = File(...), session: Session = Depends(get_se
     session.add(record)
     session.commit()
 
-    # Handle backup to MEGA
-    try:
-        handle_backup_after_upload(file_id, stored_name)
-    except Exception as e:
-        logger.error(f"Failed to backup file {file_id} to MEGA: {e}")
+    # Schedule backup to MEGA as a background task
+    if MEGA_BACKUP_ENABLED:
+        background_tasks.add_task(backup_to_mega_in_background, file_id)
 
     metrics.record_upload(size_bytes)
     logger.info(
@@ -453,7 +410,7 @@ async def upload(file: UploadFile = File(...), session: Session = Depends(get_se
 
 
 @router.post("/upload-permanent", dependencies=[Depends(require_api_key), Depends(enforce_rate_limit)])
-async def upload_permanent(file: UploadFile = File(...), session: Session = Depends(get_session)):
+async def upload_permanent(file: UploadFile = File(...), background_tasks: BackgroundTasks = BackgroundTasks(), session: Session = Depends(get_session)):
     if not file.filename:
         raise HTTPException(status_code=400, detail="Missing filename")
     data = await file.read()
@@ -484,11 +441,9 @@ async def upload_permanent(file: UploadFile = File(...), session: Session = Depe
     session.add(record)
     session.commit()
 
-    # Handle backup to MEGA
-    try:
-        handle_backup_after_upload(file_id, stored_name)
-    except Exception as e:
-        logger.error(f"Failed to backup permanent file {file_id} to MEGA: {e}")
+    # Schedule backup to MEGA as a background task
+    if MEGA_BACKUP_ENABLED:
+        background_tasks.add_task(backup_to_mega_in_background, file_id)
 
     metrics.record_upload(size_bytes)
     logger.info(
