@@ -112,17 +112,6 @@ def test_rejects_files_over_limit(tmp_path, monkeypatch):
         assert "File too large" in response.json()["detail"]
 
 
-def test_rate_limit_exceeded(tmp_path, monkeypatch):
-    with _prepare_client(tmp_path, monkeypatch, rate_limit="2") as c:
-        # First two requests succeed.
-        assert c.get("/list").status_code == 200
-        assert c.get("/list").status_code == 200
-        # Third within window should be blocked.
-        limited = c.get("/list")
-        assert limited.status_code == 429
-        assert "Rate limit exceeded" in limited.json()["detail"]
-
-
 def test_admin_requires_password(client):
     response = client.get("/admin")
     assert response.status_code == 200

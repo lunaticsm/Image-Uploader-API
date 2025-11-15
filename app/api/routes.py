@@ -7,7 +7,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
 from sqlmodel import Session, select
 
 from app.config import (
@@ -18,14 +18,15 @@ from app.config import (
     MAX_FILE_SIZE,
     RATE_LIMIT_PER_MINUTE,
     UPLOAD_DIR,
+    MEGA_BACKUP_ENABLED,
 )
 from app.core.metrics import metrics
 from app.core.rate_limit import RateLimiter
 from app.core.templates import render_template
-from app.db import get_session
+from app.db import get_session, session_scope
 from app.models import File as FileModel
 from app.services.stats import fetch_storage_totals
-from app.storage import save_file
+from app.storage import save_file, backup_and_mark
 
 router = APIRouter()
 
@@ -34,7 +35,21 @@ logger = logging.getLogger("image_uploader")
 rate_limiter = RateLimiter(RATE_LIMIT_PER_MINUTE)
 MAX_FILE_SIZE_MB = MAX_FILE_SIZE / (1024 * 1024)
 UPLOAD_ROOT = Path(UPLOAD_DIR).resolve()
+FRONTEND_DIST = Path(__file__).resolve().parents[2] / "frontend" / "dist" / "index.html"
+FRONTEND_PRESENT = FRONTEND_DIST.exists()
 _admin_attempts: dict[str, dict] = {}
+
+
+def handle_backup_after_upload(file_id: str, stored_name: str):
+    """Handle file backup to MEGA after upload"""
+    if MEGA_BACKUP_ENABLED:
+        # In production, you might want to run this in a background task.
+        # For now, we'll run it synchronously.
+        from app.storage import backup_and_mark
+        from app.db import session_scope
+
+        with session_scope() as session:
+            backup_and_mark(session, file_id)
 
 
 def require_api_key(request: Request):
@@ -75,8 +90,11 @@ async def enforce_rate_limit(request: Request):
         )
 
 
-@router.get("/", response_class=HTMLResponse)
+@router.get("/", include_in_schema=False)
 async def home(session: Session = Depends(get_session)):
+    if FRONTEND_PRESENT:
+        return RedirectResponse(url="/app", status_code=307)
+
     stats = metrics.snapshot()
     totals = fetch_storage_totals(session)
     uploads_count = max(int(stats.get("uploads", 0)), totals["total_files"])
@@ -96,8 +114,11 @@ async def home(session: Session = Depends(get_session)):
     return HTMLResponse(content=html)
 
 
-@router.get("/api-info", response_class=HTMLResponse)
-async def api_info():
+@router.get("/api-info", include_in_schema=False)
+async def api_info_redirect():
+    if FRONTEND_PRESENT:
+        return RedirectResponse(url="/app/api-guide", status_code=307)
+
     max_file_text = f"{MAX_FILE_SIZE_MB:.1f} MB"
     html = render_template(
         "pages/api.html",
@@ -226,6 +247,16 @@ async def _auth_admin(request: Request, allow_blank: bool):
     raise HTTPException(status_code=401, detail=msg)
 
 
+async def _require_admin_api(request: Request):
+    success, message, locked = await _auth_admin(request, allow_blank=False)
+    if success:
+        return
+    detail = message or "Admin password required."
+    if locked:
+        raise HTTPException(status_code=429, detail=detail)
+    raise HTTPException(status_code=401, detail=detail)
+
+
 def _remove_file_from_disk(stored_name: str) -> None:
     try:
         path = (UPLOAD_ROOT / stored_name).resolve()
@@ -306,19 +337,65 @@ async def admin_delete_all(
     return HTMLResponse(content=html)
 
 
-@router.get("/list", dependencies=[Depends(enforce_rate_limit)])
-def list_files(session: Session = Depends(get_session)):
-    files = session.exec(select(FileModel).order_by(FileModel.created_at.desc())).all()
-    return [
-        {
-            "id": f.id,
-            "url": f"/{quote(f.stored_name)}",
-            "name": f.original_name,
-            "size": f.size_bytes,
-            "created_at": f.created_at,
-        }
-        for f in files
-    ]
+@router.get("/api/admin/summary")
+async def admin_summary(request: Request, session: Session = Depends(get_session)):
+    await _require_admin_api(request)
+    totals = fetch_storage_totals(session)
+    snapshot = metrics.snapshot()
+    return {
+        "uploads": totals["total_files"],
+        "downloads": snapshot.get("downloads", 0),
+        "deleted": snapshot.get("deleted", 0),
+        "storage_bytes": totals["total_bytes"],
+        "storage_human": _human_bytes(totals["total_bytes"]),
+    }
+
+
+@router.get("/api/admin/files")
+async def admin_files(request: Request, session: Session = Depends(get_session)):
+    await _require_admin_api(request)
+    files = session.exec(select(FileModel).order_by(FileModel.created_at.desc()).limit(200)).all()
+    return {
+        "files": [
+            {
+                "id": f.id,
+                "name": f.original_name,
+                "size": f.size_bytes,
+                "created_at": f.created_at,
+                "url": f"/{quote(f.stored_name)}",
+            }
+            for f in files
+        ]
+    }
+
+
+@router.delete("/api/admin/files/{file_id}")
+async def admin_delete_single(
+    file_id: str,
+    request: Request,
+    session: Session = Depends(get_session),
+):
+    await _require_admin_api(request)
+    file = session.get(FileModel, file_id)
+    if not file:
+        raise HTTPException(status_code=404, detail="File not found")
+    _remove_file_from_disk(file.stored_name)
+    session.delete(file)
+    session.commit()
+    return {"status": "deleted", "file_id": file_id}
+
+
+@router.delete("/api/admin/files")
+async def admin_delete_everything(request: Request, session: Session = Depends(get_session)):
+    await _require_admin_api(request)
+    files = session.exec(select(FileModel)).all()
+    deleted = 0
+    for file in files:
+        _remove_file_from_disk(file.stored_name)
+        session.delete(file)
+        deleted += 1
+    session.commit()
+    return {"status": "deleted", "count": deleted}
 
 
 @router.post("/upload", dependencies=[Depends(enforce_rate_limit)])
@@ -351,6 +428,12 @@ async def upload(file: UploadFile = File(...), session: Session = Depends(get_se
     )
     session.add(record)
     session.commit()
+
+    # Handle backup to MEGA
+    try:
+        handle_backup_after_upload(file_id, stored_name)
+    except Exception as e:
+        logger.error(f"Failed to backup file {file_id} to MEGA: {e}")
 
     metrics.record_upload(size_bytes)
     logger.info(
@@ -400,6 +483,12 @@ async def upload_permanent(file: UploadFile = File(...), session: Session = Depe
     )
     session.add(record)
     session.commit()
+
+    # Handle backup to MEGA
+    try:
+        handle_backup_after_upload(file_id, stored_name)
+    except Exception as e:
+        logger.error(f"Failed to backup permanent file {file_id} to MEGA: {e}")
 
     metrics.record_upload(size_bytes)
     logger.info(

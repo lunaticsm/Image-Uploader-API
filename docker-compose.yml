@@ -11,6 +11,10 @@ services:
       DB_URL: postgresql+psycopg2://cdn:cdn@db:5432/cdn
       ENABLE_CLEANER: "true"
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:-change-me}
+      MEGA_BACKUP_ENABLED: ${MEGA_BACKUP_ENABLED:-false}
+      MEGA_EMAIL: ${MEGA_EMAIL:-}
+      MEGA_PASSWORD: ${MEGA_PASSWORD:-}
+      MEGA_FOLDER_NAME: ${MEGA_FOLDER_NAME:-ImageUploaderBackups}
     depends_on:
       db:
         condition: service_healthy

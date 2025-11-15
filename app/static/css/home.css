@@ -1,108 +1,75 @@
 :root {
-  color-scheme: light dark;
+  color-scheme: dark;
 }
-* {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+
 body {
-  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
-  min-height: 100vh;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 2rem;
-  background: radial-gradient(circle at top, #1e293b, #0f172a);
-  color: #e2e8f0;
-  padding: 2rem 1.5rem 3rem;
+  margin: 0;
+  font-family: "Plus Jakarta Sans", "Inter", system-ui, sans-serif;
+  background-color: #050915;
 }
-main {
-  width: min(620px, 100%);
-  background: rgba(15, 23, 42, 0.82);
-  border-radius: 22px;
-  padding: clamp(2.5rem, 5vw, 3.5rem);
-  text-align: center;
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  box-shadow: 0 26px 70px rgba(15, 23, 42, 0.5);
+
+.home-background {
+  background: radial-gradient(circle at top, #1f1144, #050915 55%, #01030a 90%);
 }
-h1 {
-  font-size: clamp(2rem, 5vw, 3rem);
-  margin-bottom: 1rem;
-  letter-spacing: -0.02em;
+
+.home-lights {
+  background:
+    radial-gradient(circle at 25% 20%, rgba(139, 92, 246, 0.25), transparent 45%),
+    radial-gradient(circle at 75% 10%, rgba(56, 189, 248, 0.2), transparent 50%),
+    radial-gradient(circle at 50% 80%, rgba(14, 165, 233, 0.2), transparent 40%);
 }
-p {
-  font-size: 1.05rem;
-  line-height: 1.75;
-  opacity: 0.85;
-  margin-bottom: 2rem;
+
+.shadow-brandGlow {
+  box-shadow: 0 0 18px rgba(139, 92, 246, 0.9);
 }
-.metrics-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-  gap: 1.2rem;
-  margin-bottom: 2.25rem;
+
+.glass-panel {
+  background: rgba(10, 16, 34, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 1.5rem;
+  backdrop-filter: blur(18px);
 }
-.metric {
-  text-align: left;
-  background: rgba(15, 23, 42, 0.65);
-  border-radius: 16px;
-  padding: 1.35rem;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  backdrop-filter: blur(12px);
-}
+
 .metric .label {
-  display: block;
-  font-size: 0.85rem;
+  font-size: 0.7rem;
   text-transform: uppercase;
-  letter-spacing: 0.14em;
-  opacity: 0.65;
-  margin-bottom: 0.3rem;
+  letter-spacing: 0.3em;
+  color: rgba(255, 255, 255, 0.6);
 }
+
 .metric .value {
   font-size: 2rem;
   font-weight: 600;
-  color: #f8fafc;
-}
-.metric .unit {
-  font-size: 0.8rem;
-  opacity: 0.6;
-  margin-left: 0.25rem;
-}
-a.cta {
+  margin-top: 0.35rem;
   display: inline-block;
+}
+
+.button {
   text-decoration: none;
-  font-weight: 600;
-  padding: 0.85rem 1.75rem;
-  border-radius: 9999px;
-  color: #0f172a;
-  background: linear-gradient(135deg, #38bdf8, #818cf8);
-  box-shadow: 0 20px 40px rgba(129, 140, 248, 0.4);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
 }
-a.cta:hover {
-  transform: translateY(-2px);
-  box-shadow: 0 24px 45px rgba(129, 140, 248, 0.45);
-}
-footer {
-  font-size: 0.95rem;
-  opacity: 0.75;
-  display: flex;
-  gap: 1rem;
-  flex-wrap: wrap;
+
+.step-badge {
+  min-width: 48px;
+  min-height: 48px;
+  border-radius: 0.9rem;
+  background: rgba(56, 189, 248, 0.12);
+  color: #38bdf8;
+  display: inline-flex;
+  align-items: center;
   justify-content: center;
-  text-align: center;
+  font-weight: 600;
 }
-footer .heart {
-  color: #f87171;
-  margin: 0 0.25rem;
-}
-@media (max-width: 540px) {
-  body {
-    padding: 1.75rem 1rem 2.5rem;
+
+@media (max-width: 640px) {
+  .glass-panel {
+    border-radius: 1.2rem;
   }
   .metric .value {
-    font-size: 1.7rem;
+    font-size: 1.6rem;
+  }
+  .step-badge {
+    min-width: 40px;
+    min-height: 40px;
+    font-size: 0.85rem;
   }
 }

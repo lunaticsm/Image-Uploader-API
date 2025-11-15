@@ -4,39 +4,179 @@
     <meta charset="utf-8" />
     <title>AlterBase CDN</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: {
+              display: ["Plus Jakarta Sans", "Inter", "system-ui", "sans-serif"],
+            },
+            colors: {
+              primary: "#8b5cf6",
+              secondary: "#38bdf8",
+              surface: "#0b1221",
+            },
+          },
+        },
+      };
+    </script>
     <link rel="stylesheet" href="/static/css/home.css" />
   </head>
-  <body>
-    <main>
-      <h1>AlterBase CDN</h1>
-      <p>
-        Fast minimal API for hosting images and assets. Upload files (up to ${max_file_text}), retrieve shareable
-        URLs, and keep storage tidy with automatic cleanup within 72h.
-      </p>
-      <div class="metrics-grid">
-        <div class="metric" data-key="uploads" data-value="${uploads}">
-          <span class="label">Uploads</span>
-          <span class="value">0</span>
-        </div>
-        <div class="metric" data-key="downloads" data-value="${downloads}">
-          <span class="label">Downloads</span>
-          <span class="value">0</span>
-        </div>
-        <div class="metric" data-key="deleted" data-value="${deleted}">
-          <span class="label">Cleanups</span>
-          <span class="value">0</span>
-        </div>
-        <div class="metric" data-key="storage_bytes" data-value="${storage_bytes}" data-format="bytes">
-          <span class="label">Storage</span>
-          <span class="value">0</span>
-        </div>
+  <body class="font-display bg-surface text-white">
+    <div class="relative min-h-screen overflow-hidden home-background">
+      <div class="absolute inset-0 blur-3xl opacity-70 home-lights" aria-hidden="true"></div>
+      <div class="relative z-10 max-w-6xl mx-auto px-6 py-8 flex flex-col gap-10">
+        <header class="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div class="flex items-center gap-3">
+            <span class="h-4 w-4 rounded-full bg-gradient-to-r from-primary to-secondary shadow-brandGlow"></span>
+            <div>
+              <p class="text-sm uppercase tracking-[0.2em] text-secondary">AlterBase CDN</p>
+              <p class="text-base text-slate-300">Fast uploads • instant delivery</p>
+            </div>
+          </div>
+          <nav class="flex flex-wrap gap-2 text-sm">
+            <a href="/api-info" class="px-4 py-2 rounded-full border border-white/15 hover:border-white/40 transition">API Guide</a>
+            <a
+              href="https://github.com/AlterBase/Image-Uploader-API"
+              class="px-4 py-2 rounded-full border border-white/15 text-slate-300 hover:text-white hover:border-white/40 transition"
+              rel="noopener"
+              >GitHub</a
+            >
+            <a
+              href="mailto:admin@alterbase.web.id"
+              class="px-4 py-2 rounded-full bg-gradient-to-r from-primary to-secondary text-slate-900 font-semibold shadow-lg shadow-secondary/40"
+              >Contact</a
+            >
+          </nav>
+        </header>
+
+        <main class="grid gap-8 lg:grid-cols-2 bg-white/5 backdrop-blur-xl rounded-3xl border border-white/10 p-6 md:p-10 shadow-2xl shadow-black/40">
+          <div class="space-y-5">
+            <p class="text-xs uppercase tracking-[0.3em] text-secondary">Lightning-fast storage API</p>
+            <h1 class="text-3xl md:text-4xl lg:text-5xl font-semibold leading-tight text-white">
+              Ship uploads that feel premium, professional, and simple.
+            </h1>
+            <p class="text-base md:text-lg text-slate-200 leading-relaxed">
+              Push any binary up to ${max_file_text}, get a CDN-ready link instantly, and let AlterBase mirror to MEGA
+              while your automated cleaner keeps disk usage minimal.
+            </p>
+            <div class="flex flex-wrap gap-3">
+              <a
+                href="/api-info"
+                class="button button-primary px-5 py-3 rounded-full font-semibold bg-gradient-to-r from-primary to-secondary text-slate-900 shadow-lg shadow-secondary/35"
+                >Explore API Guide</a
+              >
+              <a
+                href="https://github.com/AlterBase/Image-Uploader-API"
+                rel="noopener"
+                class="button button-secondary px-5 py-3 rounded-full font-semibold border border-white/20 text-white hover:border-white/50 transition"
+                >Self-host on GitHub</a
+              >
+            </div>
+          </div>
+          <div class="grid sm:grid-cols-2 gap-4">
+            <div class="metric glass-panel" data-key="uploads" data-value="${uploads}">
+              <span class="label">Total uploads</span>
+              <span class="value">0</span>
+            </div>
+            <div class="metric glass-panel" data-key="downloads" data-value="${downloads}">
+              <span class="label">Download hits</span>
+              <span class="value">0</span>
+            </div>
+            <div class="metric glass-panel" data-key="deleted" data-value="${deleted}">
+              <span class="label">Cleanups</span>
+              <span class="value">0</span>
+            </div>
+            <div class="metric glass-panel" data-key="storage_bytes" data-value="${storage_bytes}" data-format="bytes">
+              <span class="label">Storage footprint</span>
+              <span class="value">0</span>
+            </div>
+          </div>
+        </main>
+
+        <section class="grid gap-4 md:grid-cols-3">
+          <article class="glass-panel p-5 space-y-3">
+            <div class="text-2xl">🚀</div>
+            <h3 class="text-xl font-semibold text-white">Upload in milliseconds</h3>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              FastAPI pipeline, CDN-friendly caching, and asynchronous backups keep ingest lean and fast.
+            </p>
+          </article>
+          <article class="glass-panel p-5 space-y-3">
+            <div class="text-2xl">🛡️</div>
+            <h3 class="text-xl font-semibold text-white">Automatic MEGA mirror</h3>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              Each upload gets mirrored to MEGA before cleanup, so redundancy is built-in with zero ops overhead.
+            </p>
+          </article>
+          <article class="glass-panel p-5 space-y-3">
+            <div class="text-2xl">📊</div>
+            <h3 class="text-xl font-semibold text-white">Actionable metrics</h3>
+            <p class="text-slate-300 text-sm leading-relaxed">
+              Live counters on the public page and a JSON `/metrics` endpoint for dashboards or automation.
+            </p>
+          </article>
+        </section>
+
+        <section class="glass-panel p-6 md:p-8 space-y-6">
+          <div>
+            <p class="text-xs uppercase tracking-[0.3em] text-secondary">Proven workflow</p>
+            <h2 class="text-2xl font-semibold mt-2">How AlterBase keeps your media fleet lean.</h2>
+          </div>
+          <ol class="space-y-4">
+            <li class="flex gap-4">
+              <span class="step-badge">01</span>
+              <div>
+                <strong class="block text-lg">Send uploads</strong>
+                <p class="text-slate-300 text-sm">Use `/upload` or `/upload-permanent` with your API key.</p>
+              </div>
+            </li>
+            <li class="flex gap-4">
+              <span class="step-badge">02</span>
+              <div>
+                <strong class="block text-lg">MEGA mirror</strong>
+                <p class="text-slate-300 text-sm">Background tasks push each file to your configured MEGA folder.</p>
+              </div>
+            </li>
+            <li class="flex gap-4">
+              <span class="step-badge">03</span>
+              <div>
+                <strong class="block text-lg">Smart cleanup</strong>
+                <p class="text-slate-300 text-sm">Expired files delete only after remote backups confirm success.</p>
+              </div>
+            </li>
+          </ol>
+        </section>
+
+        <section class="glass-panel p-6 md:p-8 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+          <div>
+            <p class="text-xs uppercase tracking-[0.3em] text-secondary">Ready to deploy?</p>
+            <h3 class="text-2xl font-semibold mt-2">Bootstrap your own micro-CDN in minutes.</h3>
+            <p class="text-slate-300 text-sm mt-2">
+              Clone the repo, copy `.env-sample`, wire MEGA credentials, and run `docker compose up`. No dashboards — just API.
+            </p>
+          </div>
+          <a
+            href="https://github.com/AlterBase/Image-Uploader-API"
+            rel="noopener"
+            class="button button-primary px-6 py-3 rounded-full font-semibold bg-gradient-to-r from-primary to-secondary text-slate-900 shadow-lg shadow-secondary/35"
+            >View on GitHub</a
+          >
+        </section>
+
+        <footer class="text-center text-xs text-slate-400 space-y-1 pb-6">
+          <p>Made with <span class="text-rose-400">♥</span> by lunaticsm</p>
+          <p>© ${year} AlterBase CDN</p>
+        </footer>
       </div>
-      <a href="/api-info" class="cta">View API Guide</a>
-    </main>
-    <footer>
-      <span>Made by<span class="heart">❤️</span>lunaticsm</span>
-      <span>© ${year} AlterBase CDN</span>
-    </footer>
+    </div>
     <script src="/static/js/home.js" defer></script>
   </body>
 </html>

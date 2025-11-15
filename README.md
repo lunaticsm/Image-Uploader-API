@@ -7,14 +7,21 @@ FastAPI-powered micro CDN for storing and serving uploaded assets. Files are wri
 - 10&nbsp;MB per-file upload cap with friendly error responses.
 - In-memory rate limiting (per-client/minute) to prevent abuse.
 - Automatic cleanup job that prunes files after the configured retention window.
-- Live metrics (uploads, downloads, cleanups) exposed on the home page.
+- Live metrics (uploads, downloads, cleanups) exposed on the home page (now powered by a React SPA).
 - Password-protected admin dashboard to inspect uploads, storage usage, and prune files with lockout protection.
 - SQLite by default, with environment overrides for production databases.
+- Optional MEGA cloud backup so every upload is mirrored to remote storage before cleanup.
 
 ## Live Demo
 - Try the hosted instance at [https://cdn.alterbase.web.id](https://cdn.alterbase.web.id) to see the animated metrics, HTML landing page, and API guide in action.
 
 ## Getting Started
+
+### Prerequisites
+- Python 3.12+
+- Node.js 18+
+- npm 9+
+- A MEGA account if you plan to enable cloud mirroring
 
 ```bash
 python3 -m venv venv
@@ -23,7 +30,7 @@ pip install --upgrade pip
 pip install -r requirements.txt
 ```
 
-Optional environment variables:
+Optional environment variables (copy `.env-sample` to `.env` and adjust as needed):
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -38,8 +45,12 @@ Optional environment variables:
 | `ADMIN_PASSWORD` | `admin-dev-password` | Password required to access the `/admin` dashboard. |
 | `ADMIN_LOCK_STEP_SECONDS` | `300` | Lock duration increment (in seconds) after repeated failed admin logins. |
 | `FILE_ID_LENGTH` | `7` | Length of generated slug IDs (min 4, max 32). |
+| `MEGA_BACKUP_ENABLED` | `false` | Enable (`true`) to store a copy of each upload in MEGA. |
+| `MEGA_EMAIL` | (empty) | MEGA account email used for API authentication. |
+| `MEGA_PASSWORD` | (empty) | MEGA account password. Use an app-specific password if available. |
+| `MEGA_FOLDER_NAME` | (empty) | Optional folder (created automatically) to store uploaded files inside your MEGA drive. |
 
-Run the API:
+Run the API (after building the frontend):
 
 ```bash
 ./run.sh
@@ -47,9 +58,32 @@ Run the API:
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 2 --proxy-headers
 ```
 
-Visit `/` for a minimalist landing page with real-time usage metrics, and `/api-info` for a human-friendly API guide.
+The React UI lives at `/app` (with routes for the landing page, API guide, and admin dashboard). Static assets for the SPA are served from `/frontend`.
+
+### Frontend (React)
+
+The new UI is built with Vite + React. To run it locally:
+
+```bash
+cd frontend
+npm install
+npm run dev
+```
+
+During deployment (or before launching FastAPI), build the SPA:
+
+```bash
+cd frontend
+npm install  # first time only
+npm run build
+```
+
+The Dockerfile already runs the build step so the `/frontend/dist` output is available to the API server.
+If you are deploying manually, ensure you run the build command above whenever you tweak the frontend.
 
 ### Docker
+
+The Dockerfile uses a multi-stage build: the React SPA is compiled in a Node builder image and copied into the slim Python runtime, so the final image stays lightweight.
 
 Build and run with Docker:
 
@@ -58,7 +92,7 @@ docker build -t image-uploader .
 docker run --rm -p 8000:8000 --env-file .env -v $(pwd)/uploads:/app/uploads image-uploader
 ```
 
-Customize `DB_URL`, `UPLOAD_DIR`, etc. via the `--env-file` or individual `-e` flags.
+Make sure your `.env` (or `--env-file`) contains the MEGA credentials if you plan to enable remote backups. Customize `DB_URL`, `UPLOAD_DIR`, etc. via the `--env-file` or individual `-e` flags. The frontend build is handled inside the Docker image, so no local Node installation is required for container deployments.
 
 ### Docker Compose & Postgres
 
@@ -129,6 +163,17 @@ The suite bootstraps the FastAPI app against a temporary SQLite database to cove
 - For higher concurrency, point `DB_URL` at a server database and keep the provided SQLite connection args if you stay on SQLite.
 - Mount or back up `UPLOAD_DIR` storage if files need to persist beyond the cleaner retention window.
 - Tune `RATE_LIMIT_PER_MINUTE`, `MAX_FILE_SIZE_BYTES`, and `CACHE_MAX_AGE_SECONDS` to match your traffic patterns.
+
+## MEGA Backup Integration
+
+The application now mirrors uploads to [MEGA](https://mega.io/) instead of Google Drive. To enable the backup job:
+
+1. Create or use an existing MEGA account dedicated to your application (set up an app password if two-factor auth is enabled).
+2. Copy `.env-sample` to `.env` and set `MEGA_BACKUP_ENABLED=true`, `MEGA_EMAIL`, and `MEGA_PASSWORD`.
+3. Optionally provide `MEGA_FOLDER_NAME` to store backups inside a dedicated folder. The folder is created automatically the first time the app starts.
+
+Once enabled, every successful upload is copied to MEGA. The cleaner only removes expired files after they have been uploaded successfully, and deletions also remove the remote copy so your cloud storage stays tidy. Startup will fail fast if MEGA credentials are invalid so misconfigurations are caught before serving traffic.
+
 
 ## License
 

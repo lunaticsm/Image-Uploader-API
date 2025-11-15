@@ -19,3 +19,9 @@ CACHE_MAX_AGE_SECONDS = int(os.getenv("CACHE_MAX_AGE_SECONDS", "3600"))
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin-dev-password")
 ADMIN_LOCK_STEP_SECONDS = int(os.getenv("ADMIN_LOCK_STEP_SECONDS", str(5 * 60)))
 FILE_ID_LENGTH = max(4, min(32, int(os.getenv("FILE_ID_LENGTH", "7"))))
+
+# MEGA Backup Configuration
+MEGA_BACKUP_ENABLED = os.getenv("MEGA_BACKUP_ENABLED", "false").lower() in {"true", "1", "yes"}
+MEGA_EMAIL = os.getenv("MEGA_EMAIL", "")
+MEGA_PASSWORD = os.getenv("MEGA_PASSWORD", "")
+MEGA_FOLDER_NAME = os.getenv("MEGA_FOLDER_NAME", "")

@@ -4,85 +4,122 @@
     <meta charset="utf-8" />
     <title>AlterBase CDN API</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        theme: {
+          extend: {
+            fontFamily: { display: ["Plus Jakarta Sans", "Inter", "system-ui", "sans-serif"] },
+            colors: {
+              primary: "#8b5cf6",
+              secondary: "#38bdf8",
+            },
+          },
+        },
+      };
+    </script>
     <link rel="stylesheet" href="/static/css/api.css" />
   </head>
-  <body>
-    <div class="container">
-      <h1>AlterBase CDN API</h1>
-      <p class="lead">
-        Upload files and retrieve shareable URLs with a minimal HTTP API. Each client is limited to
-        ${rate_limit} requests per minute and individual uploads are capped at ${max_file_text}.
-      </p>
-      <p class="meta">Maximum upload size per file: <strong>${max_file_text}</strong></p>
+  <body class="font-display bg-surface text-white">
+    <div class="api-background" aria-hidden="true"></div>
+    <main class="relative z-10 min-h-screen flex items-center justify-center px-6 py-10">
+      <div class="w-full max-w-3xl glass-panel shadow-2xl shadow-black/40 p-8 md:p-10 space-y-8">
+        <header class="space-y-3">
+          <p class="text-xs uppercase tracking-[0.35em] text-secondary">Rest API Reference</p>
+          <h1 class="text-3xl md:text-4xl font-semibold">AlterBase CDN API</h1>
+          <p class="text-slate-200 text-base">
+            Upload files and retrieve shareable URLs with a minimal HTTP API. Each client is limited to
+            ${rate_limit} requests per minute and individual uploads are capped at ${max_file_text}.
+          </p>
+          <p class="text-xs uppercase tracking-[0.25em] text-slate-400">Max upload size per file: ${max_file_text}</p>
+        </header>
 
-      <section>
-        <h2>Base URL</h2>
-        <pre><code>https://cdn.alterbase.web.id</code></pre>
-      </section>
+        <section class="space-y-3">
+          <h2 class="section-title">Base URL</h2>
+          <pre class="code-block"><code>https://cdn.alterbase.web.id</code></pre>
+        </section>
 
-      <section>
-        <h2>Endpoints</h2>
-        <ul>
-          <li>
-            <strong>POST /upload</strong><br />
-            Multipart form request with <code>file</code> field (max ${max_file_text}). Returns JSON metadata with
-            <code>id</code>, <code>url</code>, <code>size</code>, <code>type</code>.
-          </li>
-          <li>
-            <strong>POST /upload-permanent</strong><br />
-            Multipart form request with <code>file</code> field and API key authentication. Returns JSON metadata with
-            <code>id</code>, <code>url</code>, <code>size</code>, <code>type</code>, <code>permanent</code>.
-            Permanent files are not subject to automatic cleanup.
-          </li>
-          <li>
-            <strong>GET /{filename}</strong><br />
-            Serves the stored file given the UUID filename returned from <code>/upload</code>. Responses include
-            cache headers (<code>Cache-Control: public, max-age</code>) for CDN friendliness.
-          </li>
-        </ul>
-      </section>
+        <section class="space-y-4">
+          <h2 class="section-title">Endpoints</h2>
+          <div class="space-y-3">
+            <article class="endpoint-card">
+              <div class="endpoint-verb">POST</div>
+              <div>
+                <strong class="text-lg">/upload</strong>
+                <p class="text-sm text-slate-300">
+                  Multipart form request with <code>file</code> (max ${max_file_text}). Returns JSON metadata containing <code>id</code>, <code>url</code>, <code>size</code>, and <code>type</code>.
+                </p>
+              </div>
+            </article>
+            <article class="endpoint-card">
+              <div class="endpoint-verb">POST</div>
+              <div>
+                <strong class="text-lg">/upload-permanent</strong>
+                <p class="text-sm text-slate-300">
+                  Same payload as <code>/upload</code> plus API key auth. Returns metadata and marks files as permanent (excluded from cleanup).
+                </p>
+              </div>
+            </article>
+            <article class="endpoint-card">
+              <div class="endpoint-verb">GET</div>
+              <div>
+                <strong class="text-lg">/{filename}</strong>
+                <p class="text-sm text-slate-300">
+                  Serves the stored file given the slug returned from <code>/upload</code>. Responses include CDN-friendly cache headers.
+                </p>
+              </div>
+            </article>
+          </div>
+        </section>
 
-      <section>
-        <h2>API Key Authentication</h2>
-        <p>
-          For permanent file uploads, you need to provide a valid API key in one of these ways:
-        </p>
-        <ul>
-          <li>Header: <code>X-API-Key: your-api-key</code></li>
-          <li>Query parameter: <code>?api_key=your-api-key</code></li>
-        </ul>
-      </section>
+        <section class="space-y-3">
+          <h2 class="section-title">API Key Authentication</h2>
+          <p class="text-sm text-slate-300">For permanent uploads, include your API key via:</p>
+          <ul class="list-disc list-inside text-sm text-slate-300 space-y-1">
+            <li>Header — <code>X-API-Key: your-api-key</code></li>
+            <li>Query parameter — <code>?api_key=your-api-key</code></li>
+          </ul>
+        </section>
 
-      <section>
-        <h2>CURL Example</h2>
-        <pre><code>curl -X POST https://cdn.alterbase.web.id/upload \
+        <section class="space-y-3">
+          <h2 class="section-title">cURL Example</h2>
+          <pre class="code-block"><code>curl -X POST https://cdn.alterbase.web.id/upload \
   -F "file=@/path/to/photo.jpg" \
   -H "Accept: application/json"</code></pre>
-      </section>
+        </section>
 
-      <section>
-        <h2>Notes</h2>
-        <ul>
-          <li>Files are stored on disk under the configured uploads directory.</li>
-          <li>The optional cleaner job removes files older than the configured retention window.</li>
-          <li>Use the relative URL from <code>/upload</code> responses to build your CDN links.</li>
-        </ul>
-      </section>
+        <section class="space-y-3">
+          <h2 class="section-title">Notes</h2>
+          <ul class="list-disc list-inside text-sm text-slate-300 space-y-1">
+            <li>Files are stored on disk under <code>UPLOAD_DIR</code> and optionally mirrored to MEGA.</li>
+            <li>The cleaner deletes files older than <code>DELETE_AFTER_HOURS</code> only after successful backup.</li>
+            <li>Use relative URLs from responses (`/abc123.jpg`) when constructing CDN links.</li>
+          </ul>
+        </section>
 
-      <section>
-        <h2>Build Your Own</h2>
-        <p>
-          Clone the open source project from
-          <a href="https://github.com/lunaticsm/Image-Uploader-API" target="_blank" rel="noopener"
-            >github.com/lunaticsm/Image-Uploader-API</a
-          >
-          to deploy this stack on your own infrastructure.
-        </p>
-      </section>
+        <section class="space-y-3">
+          <h2 class="section-title">Build Your Own</h2>
+          <p class="text-sm text-slate-300">
+            Clone the open source project from
+            <a class="underline text-secondary" href="https://github.com/AlterBase/Image-Uploader-API" rel="noopener"
+              >github.com/AlterBase/Image-Uploader-API</a
+            >
+            to deploy the stack on your infrastructure.
+          </p>
+        </section>
 
-      <section>
-        <a href="/">← Back to home</a>
-      </section>
-    </div>
+        <footer class="pt-4">
+          <a href="/" class="text-secondary text-sm hover:text-white transition inline-flex items-center gap-2">
+            <span>← Back to home</span>
+          </a>
+        </footer>
+      </div>
+    </main>
   </body>
 </html>
