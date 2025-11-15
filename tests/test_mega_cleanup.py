@@ -5,8 +5,6 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 from sqlmodel import Session, select
-from app.db import get_session
-from app.models import File as FileModel
 
 
 def _prepare_client_for_cleanup_test(tmp_path, monkeypatch, *, enable_backup="true"):
@@ -157,17 +155,19 @@ def test_cleanup_respects_backup_status(client_with_backup_enabled):
 
 def test_cleanup_does_not_remove_unbacked_file_with_backup_enabled(client_with_backup_enabled):
     """Cleanup should not remove files that haven't been backed up even when remote backup is enabled."""
+    from app.db import get_session
+    from app.models import File as FileModel
     client = client_with_backup_enabled
-    
-    # Upload a test file 
+
+    # Upload a test file
     response = client.post("/upload", files={"file": ("test2.txt", b"Test content 2", "text/plain")})
     assert response.status_code == 200
-    
+
     # Get the file ID from the response
     response_data = response.json()
     file_id = response_data['id']
     stored_name = response_data['url'].lstrip('/')
-    
+
     # Verify the file exists in the database and backed_up is False
     session_gen = get_session()
     session = next(session_gen)
