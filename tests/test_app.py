@@ -23,10 +23,6 @@ def _prepare_client(tmp_path, monkeypatch, *, rate_limit="5", max_size=str(10 * 
     monkeypatch.setenv("CACHE_MAX_AGE_SECONDS", cache_age)
     monkeypatch.setenv("ADMIN_PASSWORD", "test-admin")
     monkeypatch.setenv("ADMIN_LOCK_STEP_SECONDS", lock_step)
-    monkeypatch.setenv("MEGA_BACKUP_ENABLED", "false")
-    monkeypatch.setenv("MEGA_EMAIL", "")
-    monkeypatch.setenv("MEGA_PASSWORD", "")
-    monkeypatch.setenv("MEGA_FOLDER_NAME", "")
 
     # Reload modules so configuration changes take effect cleanly.
     module_order = [
